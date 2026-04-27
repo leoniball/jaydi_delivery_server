@@ -1,0 +1,33 @@
+name: jaydi_delivery
+description: "App para los repartidores de Jaydi Express"
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.1.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.6
+  google_fonts: ^6.2.1
+  http: ^1.2.1
+  http_parser: ^4.0.0 
+  location: ^5.0.3
+  google_maps_flutter: ^2.5.3
+  shared_preferences: ^2.5.5
+  image_picker: ^1.2.1
+  camera: ^0.12.0+1
+  # --- NUEVAS REQUERIDAS ---
+  path: ^1.8.3
+  path_provider: ^2.1.1
+  # -------------------------
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+
+flutter:
+  uses-material-design: true
+  # Si tienes assets como el logo de Jaydi, asegúrate de declararlos abajo

@@ -20,12 +20,15 @@ class _RegistroScreenState extends State<RegistroScreen> {
 
   bool _cargando = false;
 
+  // CENTRALIZAMOS TU URL DE RENDER AQUÍ
+  static const String baseUrl = 'https://jaydi-delivery-serverv.onrender.com';
+
   Future<void> _registrar() async {
     if (_formKey.currentState!.validate()) {
       setState(() => _cargando = true);
 
-      // URL de tu servidor Flask (Usa tu IP local si pruebas en físico o 10.0.2.2 en emulador)
-      const String url = "http://10.0.2.2:5000/registro"; 
+      // URL actualizada a tu servidor en la nube de Render
+      const String url = "$baseUrl/registro";
 
       try {
         final response = await http.post(
@@ -36,7 +39,7 @@ class _RegistroScreenState extends State<RegistroScreen> {
             "correo": _correoController.text.trim(),
             "clave": _claveController.text,
           }),
-        );
+        ).timeout(const Duration(seconds: 15)); // Tiempo de espera para Render
 
         final data = jsonDecode(response.body);
 
@@ -65,7 +68,7 @@ class _RegistroScreenState extends State<RegistroScreen> {
         }
       } catch (e) {
         if (mounted) {
-          _mostrarError("No se pudo conectar con el servidor. Verifica tu conexión.");
+          _mostrarError("No se pudo conectar con el servidor o está despertando. Reintenta.");
         }
       } finally {
         if (mounted) setState(() => _cargando = false);

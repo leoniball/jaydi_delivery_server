@@ -17,21 +17,24 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _obscureText = true;
   bool _isLoading = false; // Para mostrar un indicador de carga
 
+  // CENTRALIZAMOS TU URL DE RENDER AQUÍ
+  static const String baseUrl = 'https://jaydi-delivery-serverv.onrender.com';
+
   // FUNCIÓN CORREGIDA: Ahora consulta al servidor real
   Future<void> _iniciarSesion() async {
     if (_formKey.currentState!.validate()) {
       setState(() => _isLoading = true);
 
       try {
-        // 1. Petición al servidor (Usa tu IP 192.168.1.7)
+        // 1. Petición al servidor (Ahora apunta a Render en la nube)
         final response = await http.post(
-          Uri.parse('http://192.168.1.7:5000/login'),
+          Uri.parse('$baseUrl/login'),
           headers: {'Content-Type': 'application/json'},
           body: jsonEncode({
             'correo': _correoController.text.trim(),
             'clave': _claveController.text,
           }),
-        );
+        ).timeout(const Duration(seconds: 15)); // Agregamos timeout por si Render está despertando
 
         if (response.statusCode == 200) {
           final data = jsonDecode(response.body);
@@ -60,7 +63,7 @@ class _LoginScreenState extends State<LoginScreen> {
       } catch (e) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text("Error de conexión con el servidor")),
+            const SnackBar(content: Text("Error de conexión o el servidor está despertando")),
           );
         }
       } finally {

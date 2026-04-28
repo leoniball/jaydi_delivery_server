@@ -44,7 +44,7 @@ class _HomeRepartidorState extends State<HomeRepartidor> {
     if (userId == null) await _cargarDatosUsuario();
     
     // AQUÍ ESTÁ LA MAGIA: Conectado a tu servidor real en la nube
-    final String url = "https://jaydi-server.onrender.com/verificar_estatus/$userId";
+    final String url = "https://jaydi-delivery-serverv.onrender.com/verificar_estatus/$userId";
 
     try {
       final response = await http.get(Uri.parse(url));

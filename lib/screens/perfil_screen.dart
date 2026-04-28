@@ -39,7 +39,8 @@ class _PerfilScreenState extends State<PerfilScreen> {
 
     if (idPersistido != null) {
       try {
-        final url = "http://10.0.2.2:5000/verificar_estatus/$idPersistido";
+        // CAMBIO DE URL: Ahora apunta a tu servidor en Render
+        final url = "https://jaydi-delivery-serverv.onrender.com/verificar_estatus/$idPersistido";
         final response = await http.get(Uri.parse(url));
         
         if (response.statusCode == 200) {

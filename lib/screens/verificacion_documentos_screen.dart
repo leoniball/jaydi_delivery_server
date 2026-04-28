@@ -78,7 +78,8 @@ class _VerificacionDocumentosScreenState extends State<VerificacionDocumentosScr
 
       if (userId == null) throw Exception("Error: No se encontró el ID de usuario.");
 
-      var url = Uri.parse('http://192.168.1.7:5000/subir_documento');
+      // CAMBIO AQUÍ: Ahora apunta a Render en la nube
+      var url = Uri.parse('https://jaydi-delivery-serverv.onrender.com/subir_documento');
 
       for (var req in _requisitos) {
         if (req['path'] == null || req['path'].isEmpty) continue;
@@ -96,7 +97,8 @@ class _VerificacionDocumentosScreenState extends State<VerificacionDocumentosScr
         ));
 
         debugPrint("🚀 Enviando ${req['id']}...");
-        var streamedResponse = await request.send();
+        // Agregamos un timeout de 30 segundos por si las imágenes son pesadas o el internet está lento
+        var streamedResponse = await request.send().timeout(const Duration(seconds: 30));
         var response = await http.Response.fromStream(streamedResponse);
 
         final Map<String, dynamic> responseData = jsonDecode(response.body);

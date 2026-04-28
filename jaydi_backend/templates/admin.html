@@ -76,8 +76,12 @@
     </div>
 
     <script>
+        // CENTRALIZAMOS TU URL DE RENDER AQUÍ PARA TODO EL PANEL ADMIN
+        const SERVER_URL = 'https://jaydi-delivery-serverv.onrender.com';
+
         function cargarRepartidores() {
-            fetch('/admin/api/repartidores')
+            // CAMBIO: Apuntando a la API de Render
+            fetch(`${SERVER_URL}/admin/api/repartidores`)
                 .then(res => res.json())
                 .then(data => {
                     const tbody = document.getElementById('tabla-repartidores');
@@ -95,7 +99,9 @@
                         saldoTotal += parseFloat(user.saldo || 0);
 
                         const fecha = user.ultima_conexion ? new Date(user.ultima_conexion).toLocaleString() : '---';
-                        const baseUrl = `/uploads/documentos/user_${user.id}`;
+                        
+                        // CAMBIO: Asegurando que las imágenes se carguen desde el servidor en la nube
+                        const baseUrl = `${SERVER_URL}/uploads/documentos/user_${user.id}`;
 
                         rows += `
                             <tr>
@@ -129,19 +135,26 @@
                     document.getElementById('count-total').innerText = data.length;
                     document.getElementById('count-pendientes').innerText = pendientes;
                     document.getElementById('total-saldo').innerText = `$${saldoTotal.toFixed(2)}`;
+                })
+                .catch(err => {
+                    console.error("Error cargando repartidores:", err);
+                    document.getElementById('tabla-repartidores').innerHTML = '<tr><td colspan="6" class="text-center py-5 text-danger">Error conectando con el servidor.</td></tr>';
                 });
         }
 
         function aprobar(id) {
             if(confirm('¿Has verificado todos los documentos del repartidor #' + id + '?')) {
-                fetch(`/admin/aprobar/${id}`, { method: 'POST' })
+                // CAMBIO: Apuntando a la API de Render para aprobar
+                fetch(`${SERVER_URL}/admin/aprobar/${id}`, { method: 'POST' })
                     .then(res => {
                         if(res.ok) {
                             alert('¡Repartidor activado en el sistema!');
                             cargarRepartidores();
+                        } else {
+                            alert('Error al aprobar en el servidor.');
                         }
                     })
-                    .catch(err => alert('Error al conectar con el servidor.'));
+                    .catch(err => alert('Error al conectar con el servidor en la nube.'));
             }
         }
 

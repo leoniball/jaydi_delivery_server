@@ -14,6 +14,9 @@ class PedidosPendientesScreen extends StatefulWidget {
 }
 
 class _PedidosPendientesScreenState extends State<PedidosPendientesScreen> {
+  // CENTRALIZAMOS TU URL DE RENDER AQUÍ
+  static const String baseUrl = 'https://jaydi-delivery-serverv.onrender.com';
+
   List<dynamic> pedidos = [];
   bool isLoading = true;
 
@@ -29,7 +32,7 @@ class _PedidosPendientesScreenState extends State<PedidosPendientesScreen> {
     });
 
     try {
-      final url = Uri.parse('https://jaydi-server.onrender.com/pedidos_pendientes');
+      final url = Uri.parse('$baseUrl/pedidos_pendientes');   
       final response = await http.get(url);
 
       // SOLUCIÓN 3: Verificar que la pantalla sigue existiendo después del await
@@ -59,7 +62,7 @@ class _PedidosPendientesScreenState extends State<PedidosPendientesScreen> {
     );
 
     try {
-      final url = Uri.parse('https://jaydi-server.onrender.com/aceptar_pedido');
+      final url = Uri.parse('$baseUrl/aceptar_pedido');
       final response = await http.post(
         url,
         headers: {'Content-Type': 'application/json'},

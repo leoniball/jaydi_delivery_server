@@ -43,6 +43,9 @@ class _LoginScreenState extends State<LoginScreen> {
           // 2. GUARDAMOS LOS DATOS REALES (Vienen de Neon)
           SharedPreferences prefs = await SharedPreferences.getInstance();
           await prefs.setBool('isLoggedIn', true);
+          // Guardamos el ID como entero para la bolsa de pedidos
+          await prefs.setInt('repartidor_id', int.parse(userData['id']));
+          await prefs.setString('nombre_repartidor', userData['nombre']);
           await prefs.setString('userId', userData['id'].toString()); // ID real de DB
           await prefs.setString('nombre', userData['nombre']); // Nombre real de DB
           await prefs.setString('correo', userData['correo']); // Correo real de DB

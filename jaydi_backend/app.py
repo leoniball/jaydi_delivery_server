@@ -195,6 +195,36 @@ def verificar_estatus(user_id):
 
 # --- NUEVOS ENDPOINTS DE ASIGNACIÓN DE PEDIDOS ---
 
+# 👇 INICIO DEL NUEVO ENDPOINT PARA BOLSAS DE PEDIDOS 👇
+@app.route('/api/delivery/pedidos_disponibles', methods=['GET'])
+def obtener_pedidos_delivery():
+    """
+    Este endpoint es el puente exacto entre Jaydi Express y Delivery.
+    Busca en PostgreSQL los pedidos que ya fueron confirmados y preparados en 
+    la app principal, listos para que un repartidor los recoja.
+    """
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        
+        # Filtramos por el estado 'listo_para_entrega'. 
+        # Asegúrate de que el backend de Express actualice el estado a este valor.
+        # AS 'cliente' renombra temporalmente id_usuario para que el modelo de Flutter lo lea fácil.
+        cur.execute("""
+            SELECT id, id_usuario AS cliente, direccion_entrega AS direccion, total 
+            FROM pedidos 
+            WHERE estado = 'listo_para_entrega'
+        """)
+        pedidos_listos = cur.fetchall()
+        
+        cur.close()
+        conn.close()
+        
+        return jsonify(pedidos_listos), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+# 👆 FIN DEL NUEVO ENDPOINT 👆
+
 @app.route('/pedidos_pendientes', methods=['GET'])
 def pedidos_pendientes():
     try:

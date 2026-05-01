@@ -50,7 +50,9 @@ class _HomeRepartidorState extends State<HomeRepartidor> {
       final response = await http.get(Uri.parse(url));
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        bool nuevoEstatus = data['es_verificado'] ?? false;
+        
+        // CORRECCIÓN CLAVE AQUÍ: La palabra exacta que manda Python es 'verificado'
+        bool nuevoEstatus = data['verificado'] ?? false;
 
         if (nuevoEstatus == true && esVerificado == false && !cargandoEstatus) {
           _mostrarNotificacionExito();
@@ -60,9 +62,29 @@ class _HomeRepartidorState extends State<HomeRepartidor> {
           esVerificado = nuevoEstatus;
           cargandoEstatus = false;
         });
+      } else {
+        // Si el servidor responde pero con error (ej. usuario borrado)
+        if (mounted) {
+           ScaffoldMessenger.of(context).showSnackBar(
+             const SnackBar(
+               content: Text("Error al verificar estatus con el servidor."),
+               backgroundColor: Colors.red,
+             ),
+           );
+        }
+        setState(() => cargandoEstatus = false);
       }
     } catch (e) {
-      debugPrint("Error de conexión: $e");
+      // CORRECCIÓN: Adiós a los códigos rojos raros. Mensaje amigable si no hay red.
+      if (mounted) {
+         ScaffoldMessenger.of(context).showSnackBar(
+           const SnackBar(
+             content: Text("Error de red. Verifica tu conexión a internet."),
+             backgroundColor: Colors.red,
+             duration: Duration(seconds: 3),
+           ),
+         );
+      }
       setState(() => cargandoEstatus = false);
     }
   }

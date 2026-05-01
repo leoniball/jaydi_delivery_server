@@ -4,10 +4,10 @@ import '../models/pedido_model.dart';
 
 class ApiDeliveryService {
   // Pon aquí tu URL de Render
-  static const String baseUrl = 'https://tu-servidor-jaydi.onrender.com/api';
+  static const String baseUrl = 'https://jaydi-delivery-serverv.onrender.com';
 
   Future<List<Pedido>> obtenerBolsas() async {
-    final response = await http.get(Uri.parse('$baseUrl/delivery/pedidos_disponibles'));
+    final response = await http.get(Uri.parse('$baseUrl/pedidos_disponibles'));
 
     if (response.statusCode == 200) {
       List jsonResponse = json.decode(response.body);

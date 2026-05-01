@@ -32,7 +32,7 @@ class _PedidosPendientesScreenState extends State<PedidosPendientesScreen> {
     });
 
     try {
-      final url = Uri.parse('$baseUrl/pedidos_pendientes');   
+     final url = Uri.parse('$baseUrl/pedidos_disponibles');   
       final response = await http.get(url);
 
       // SOLUCIÓN 3: Verificar que la pantalla sigue existiendo después del await

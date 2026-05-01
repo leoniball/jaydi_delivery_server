@@ -53,7 +53,7 @@ class _BolsasPedidosScreenState extends State<BolsasPedidosScreen> {
   Future<void> obtenerBolsas() async {
     setState(() => isLoading = true);
     try {
-      final response = await http.get(Uri.parse('$baseUrl/api/delivery/pedidos_disponibles'));
+      final response = await http.get(Uri.parse('$baseUrl/pedidos_disponibles'));
 
       if (response.statusCode == 200) {
         List<dynamic> data = json.decode(response.body);

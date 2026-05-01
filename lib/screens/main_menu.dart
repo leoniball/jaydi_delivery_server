@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:jaydi_delivery/screens/home_repartidor.dart';
 import 'package:jaydi_delivery/screens/perfil_screen.dart'; 
+import 'package:jaydi_delivery/screens/ruta_screen.dart'; // Importamos la nueva pantalla
 
 class MainMenu extends StatefulWidget {
   const MainMenu({super.key});
@@ -17,7 +18,7 @@ class _MainMenuState extends State<MainMenu> {
     // Definimos las pantallas dinámicas
     final List<Widget> screens = [
       const HomeRepartidor(), 
-      const Center(child: Text("Pantalla: Mi Ruta")),
+      const RutaScreen(), // Mejora aplicada: Ahora carga el historial de viajes real
       const Center(child: Text("Pantalla: Mensajería (Jaydi Express)")),
       const Center(child: Text("Pantalla: Billetera")),
       // REQUERIMIENTO REAL: Ya no le pasamos 'true' ni 'false'. 

@@ -1,7 +1,19 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     
+    <!-- Permisos de Internet existentes -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <!-- 1. PERMISOS DE UBICACIÓN -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    
+    <!-- 2. RASTREO EN SEGUNDO PLANO -->
+    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
+    
+    <!-- 3. SERVICIO EN PRIMER PLANO (Vital para repartidores) -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
 
     <application
         android:label="jaydi_delivery"
@@ -9,6 +21,12 @@
         android:icon="@mipmap/ic_launcher"
         android:usesCleartextTraffic="true">
         
+        <!-- INJERTO JAYDI: Servicio para que el GPS no se corte al minimizar la app -->
+        <service android:name="com.lyokone.location.FlutterLocationService" 
+                 android:enabled="true" 
+                 android:exported="false" 
+                 android:foregroundServiceType="location" />
+
         <activity
             android:name=".MainActivity"
             android:exported="true"

@@ -1,24 +1,26 @@
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import 'main_menu.dart'; 
+import '../services/location_service.dart'; // <--- IMPORTAMOS EL SERVICIO DE GPS
 
 class PedidosPendientesScreen extends StatefulWidget {
   final String repartidorId; 
 
-  // SOLUCIÓN 1: Uso de 'super.key'
   const PedidosPendientesScreen({super.key, required this.repartidorId});
 
   @override
-  // SOLUCIÓN 2: Tipo de retorno público 'State<T>'
   State<PedidosPendientesScreen> createState() => _PedidosPendientesScreenState();
 }
 
 class _PedidosPendientesScreenState extends State<PedidosPendientesScreen> {
-  // CENTRALIZAMOS TU URL DE RENDER AQUÍ
   static const String baseUrl = 'https://jaydi-delivery-serverv.onrender.com';
 
   List<dynamic> pedidos = [];
   bool isLoading = true;
+  
+  // Instanciamos el servicio de localización
+  final LocationService _locationService = LocationService();
 
   @override
   void initState() {
@@ -27,15 +29,13 @@ class _PedidosPendientesScreenState extends State<PedidosPendientesScreen> {
   }
 
   Future<void> _cargarPedidos() async {
-    setState(() {
-      isLoading = true;
-    });
+    if (!mounted) return;
+    setState(() => isLoading = true);
 
     try {
-     final url = Uri.parse('$baseUrl/pedidos_disponibles');   
+      final url = Uri.parse('$baseUrl/pedidos_disponibles');   
       final response = await http.get(url);
 
-      // SOLUCIÓN 3: Verificar que la pantalla sigue existiendo después del await
       if (!mounted) return;
 
       if (response.statusCode == 200) {
@@ -44,7 +44,7 @@ class _PedidosPendientesScreenState extends State<PedidosPendientesScreen> {
           isLoading = false;
         });
       } else {
-        _mostrarMensaje('Error al cargar pedidos: ${response.statusCode}', Colors.red);
+        _mostrarMensaje('Error al cargar pedidos', Colors.red);
         setState(() => isLoading = false);
       }
     } catch (e) {
@@ -58,31 +58,41 @@ class _PedidosPendientesScreenState extends State<PedidosPendientesScreen> {
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (context) => const Center(child: CircularProgressIndicator()),
+      builder: (context) => const Center(child: CircularProgressIndicator(color: Color(0xFFFF5722))),
     );
 
     try {
-      final url = Uri.parse('$baseUrl/aceptar_pedido');
+      final url = Uri.parse('$baseUrl/aceptar_pedido/$pedidoId');
       final response = await http.post(
         url,
         headers: {'Content-Type': 'application/json'},
         body: json.encode({
-          'pedido_id': pedidoId,
           'repartidor_id': int.tryParse(widget.repartidorId) ?? 0, 
         }),
       );
 
-      // SOLUCIÓN 3: Verificar montado antes de usar el context para cerrar el diálogo
       if (!mounted) return;
-      Navigator.of(context).pop();
-
-      final jsonResponse = json.decode(response.body);
+      Navigator.of(context).pop(); // Cerramos el cargando
 
       if (response.statusCode == 200) {
-        _mostrarMensaje(jsonResponse['message'] ?? '¡Pedido aceptado!', Colors.green);
-        _cargarPedidos(); 
+        _mostrarMensaje('¡Pedido aceptado! Iniciando ruta...', Colors.green);
+        
+        // --- ACTIVACIÓN DEL GPS EN TIEMPO REAL ---
+        // Iniciamos el rastreo usando el ID del pedido recién aceptado
+        _locationService.iniciarRastreo(pedidoId);
+        
+        Future.delayed(const Duration(milliseconds: 500), () {
+          if (mounted) {
+            Navigator.pushAndRemoveUntil(
+              context,
+              MaterialPageRoute(builder: (context) => const MainMenu()),
+              (route) => false,
+            );
+          }
+        });
       } else {
-        _mostrarMensaje(jsonResponse['error'] ?? 'No se pudo aceptar', Colors.red);
+        final jsonResponse = json.decode(response.body);
+        _mostrarMensaje(jsonResponse['mensaje'] ?? 'No se pudo aceptar', Colors.red);
       }
     } catch (e) {
       if (!mounted) return;
@@ -94,8 +104,9 @@ class _PedidosPendientesScreenState extends State<PedidosPendientesScreen> {
   void _mostrarMensaje(String texto, Color color) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(texto, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+        content: Text(texto, style: const TextStyle(fontWeight: FontWeight.bold)),
         backgroundColor: color,
+        behavior: SnackBarBehavior.floating,
         duration: const Duration(seconds: 2),
       ),
     );
@@ -104,103 +115,106 @@ class _PedidosPendientesScreenState extends State<PedidosPendientesScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.grey[100],
+      backgroundColor: Colors.white,
       appBar: AppBar(
         title: const Text('Bolsa de Pedidos', style: TextStyle(fontWeight: FontWeight.bold)),
-        backgroundColor: Colors.blueAccent,
+        backgroundColor: const Color(0xFFFF5722),
         foregroundColor: Colors.white,
+        elevation: 0,
         actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: _cargarPedidos,
-          )
+          IconButton(icon: const Icon(Icons.refresh), onPressed: _cargarPedidos)
         ],
       ),
       body: isLoading
-          ? const Center(child: CircularProgressIndicator(color: Colors.blueAccent))
+          ? const Center(child: CircularProgressIndicator(color: Color(0xFFFF5722)))
           : pedidos.isEmpty
-              ? const Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.motorcycle, size: 80, color: Colors.grey),
-                      SizedBox(height: 15),
-                      Text(
-                        'No hay pedidos pendientes',
-                        style: TextStyle(fontSize: 18, color: Colors.grey, fontWeight: FontWeight.bold),
-                      ),
-                    ],
+              ? _buildEmptyState()
+              : RefreshIndicator(
+                  onRefresh: _cargarPedidos,
+                  color: const Color(0xFFFF5722),
+                  child: ListView.builder(
+                    padding: const EdgeInsets.all(15),
+                    itemCount: pedidos.length,
+                    itemBuilder: (context, index) => _buildPedidoCard(pedidos[index]),
                   ),
-                )
-              : ListView.builder(
-                  padding: const EdgeInsets.all(12),
-                  itemCount: pedidos.length,
-                  itemBuilder: (context, index) {
-                    final pedido = pedidos[index];
-                    
-                    return Card(
-                      elevation: 4,
-                      margin: const EdgeInsets.only(bottom: 15),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      child: Padding(
-                        padding: const EdgeInsets.all(15),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                const Icon(Icons.location_on, color: Colors.redAccent, size: 28),
-                                const SizedBox(width: 10),
-                                Expanded(
-                                  child: Text(
-                                    pedido['direccion_entrega'] ?? 'Dirección no especificada',
-                                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const Padding(
-                              padding: EdgeInsets.symmetric(vertical: 10),
-                              child: Divider(thickness: 1.5),
-                            ),
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    const Text('A cobrar:', style: TextStyle(color: Colors.grey, fontSize: 14)),
-                                    Text(
-                                      '\$${pedido['total']}',
-                                      style: const TextStyle(
-                                        fontSize: 22, 
-                                        fontWeight: FontWeight.w900, 
-                                        color: Colors.green
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                ElevatedButton.icon(
-                                  onPressed: () => _aceptarPedido(pedido['id']),
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: Colors.blueAccent,
-                                    foregroundColor: Colors.white,
-                                    padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 12),
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(8),
-                                    ),
-                                  ),
-                                  icon: const Icon(Icons.check_circle, size: 22),
-                                  label: const Text('ACEPTAR VIAJE', style: TextStyle(fontWeight: FontWeight.bold)),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-                    );
-                  },
                 ),
     );
   }
-}
+
+  Widget _buildEmptyState() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.motorcycle, size: 80, color: Colors.grey[300]),
+          const SizedBox(height: 15),
+          const Text(
+            'No hay pedidos pendientes hoy',
+            style: TextStyle(fontSize: 16, color: Colors.grey, fontWeight: FontWeight.bold),
+          ),
+        ],
+      ),
+    );
+  }
+
+ Widget _buildPedidoCard(Map pedido) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 20),
+      padding: const EdgeInsets.all(15),
+      decoration: BoxDecoration(
+        // CAMBIO AQUÍ: Usamos withValues en vez de withOpacity
+        color: const Color(0xFFFF5722).withValues(alpha: 0.05),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFFFF5722).withValues(alpha: 0.1)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.location_on, color: Color(0xFFFF5722), size: 30),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  pedido['direccion'] ?? 'Dirección no especificada',
+                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                ),
+              ),
+            ],
+          ),
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 12),
+            child: Divider(height: 1),
+          ),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('A cobrar:', style: TextStyle(color: Colors.grey, fontSize: 13)),
+                  Text(
+                    '\$${pedido['total']}',
+                    style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w900, color: Colors.green),
+                  ),
+                ],
+              ),
+              ElevatedButton.icon(
+                onPressed: () => _aceptarPedido(pedido['id']),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFFFF5722),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  elevation: 5,
+                ),
+                icon: const Icon(Icons.check_circle_outline),
+                label: const Text('ACEPTAR VIAJE', style: TextStyle(fontWeight: FontWeight.bold)),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+  }

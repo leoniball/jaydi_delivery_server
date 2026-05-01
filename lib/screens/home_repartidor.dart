@@ -3,7 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
 import 'verificacion_documentos_screen.dart';
-import 'pedidos_pendientes.dart'; // Importamos tu nueva pantalla real
+import 'pedidos_pendientes.dart'; 
+import 'main_menu.dart'; // IMPORTANTE: Para el salto a la pantalla de ruta
 
 class HomeRepartidor extends StatefulWidget {
   const HomeRepartidor({super.key});
@@ -35,23 +36,20 @@ class _HomeRepartidorState extends State<HomeRepartidor> {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     setState(() {
       nombreUsuario = prefs.getString('nombre') ?? "Leandro";
-      userId = prefs.getString('userId') ?? "1"; // Ajustado para pruebas
+      userId = prefs.getString('userId') ?? "1"; 
     });
   }
 
-  // --- FUNCIÓN: CONSULTA A NEON VÍA FLASK CON NOTIFICACIÓN ---
+  // --- FUNCIÓN: CONSULTA A NEON VÍA FLASK ---
   Future<void> _verificarEstatusServidor() async {
     if (userId == null) await _cargarDatosUsuario();
     
-    // AQUÍ ESTÁ LA MAGIA: Conectado a tu servidor real en la nube
     final String url = "https://jaydi-delivery-serverv.onrender.com/verificar_estatus/$userId";
 
     try {
       final response = await http.get(Uri.parse(url));
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        
-        // CORRECCIÓN CLAVE AQUÍ: La palabra exacta que manda Python es 'verificado'
         bool nuevoEstatus = data['verificado'] ?? false;
 
         if (nuevoEstatus == true && esVerificado == false && !cargandoEstatus) {
@@ -63,7 +61,6 @@ class _HomeRepartidorState extends State<HomeRepartidor> {
           cargandoEstatus = false;
         });
       } else {
-        // Si el servidor responde pero con error (ej. usuario borrado)
         if (mounted) {
            ScaffoldMessenger.of(context).showSnackBar(
              const SnackBar(
@@ -75,7 +72,6 @@ class _HomeRepartidorState extends State<HomeRepartidor> {
         setState(() => cargandoEstatus = false);
       }
     } catch (e) {
-      // CORRECCIÓN: Adiós a los códigos rojos raros. Mensaje amigable si no hay red.
       if (mounted) {
          ScaffoldMessenger.of(context).showSnackBar(
            const SnackBar(
@@ -89,10 +85,37 @@ class _HomeRepartidorState extends State<HomeRepartidor> {
     }
   }
 
+  // --- NUEVA LÓGICA: PROCESAR ACEPTACIÓN Y SALTAR A RUTA ---
+  // Esta función la puedes llamar desde aquí o pasarla a la Bolsa de Pedidos
+  Future<void> aceptarPedidoRapido(int pedidoId) async {
+    try {
+      final response = await http.post(
+        Uri.parse('https://jaydi-delivery-serverv.onrender.com/aceptar_pedido/$pedidoId'),
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode({'repartidor_id': userId}),
+      );
+
+      if (response.statusCode == 200) {
+        if (mounted) {
+          // EL SALTO DE FE: 
+          // Mandamos al usuario al MainMenu y forzamos que se reinicie el flujo.
+          // La pantalla de Ruta (que está en el index 1 del MainMenu) detectará el pedido activo.
+          Navigator.pushAndRemoveUntil(
+            context,
+            MaterialPageRoute(builder: (context) => const MainMenu()),
+            (route) => false,
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint("Error al aceptar viaje: $e");
+    }
+  }
+
   // --- FUNCIÓN DE CIERRE DE SESIÓN ---
   Future<void> _cerrarSesion() async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
-    await prefs.clear(); // Borra la sesión
+    await prefs.clear(); 
     if (mounted) {
       Navigator.pushNamedAndRemoveUntil(context, '/login', (route) => false);
     }
@@ -231,7 +254,6 @@ class _HomeRepartidorState extends State<HomeRepartidor> {
 
               if (!esVerificado) _buildAvisoPendiente(),
 
-              // --- SECCIÓN ACTUALIZADA A LA PANTALLA REAL ---
               if (isOnline && esVerificado) ...[
                 const Text(
                   "Zona de Trabajo Activa",
@@ -244,7 +266,7 @@ class _HomeRepartidorState extends State<HomeRepartidor> {
               else
                 const SizedBox.shrink(), 
               
-              const SizedBox(height: 100), // Espacio para que el FloatingActionButton no tape contenido
+              const SizedBox(height: 100), 
             ],
           ),
         ),
@@ -299,11 +321,9 @@ class _HomeRepartidorState extends State<HomeRepartidor> {
     );
   }
 
-  // --- BOTÓN REAL QUE LLEVA A LA BOLSA DE PEDIDOS ---
   Widget _buildBolsaPedidosButton() {
     return InkWell(
       onTap: () {
-        // Navega a la pantalla real pasando el ID del repartidor
         Navigator.push(
           context,
           MaterialPageRoute(

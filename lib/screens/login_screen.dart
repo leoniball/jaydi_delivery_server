@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:http/http.dart' as http; // IMPORTANTE: Para conectar con el servidor
-import 'dart:convert'; // IMPORTANTE: Para procesar el JSON
+import 'package:http/http.dart' as http; 
+import 'dart:convert'; 
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -15,58 +15,60 @@ class _LoginScreenState extends State<LoginScreen> {
   final _correoController = TextEditingController();
   final _claveController = TextEditingController();
   bool _obscureText = true;
-  bool _isLoading = false; // Para mostrar un indicador de carga
+  bool _isLoading = false; 
 
   // CENTRALIZAMOS TU URL DE RENDER AQUÍ
   static const String baseUrl = 'https://jaydi-delivery-serverv.onrender.com';
 
-  // FUNCIÓN CORREGIDA: Ahora consulta al servidor real
   Future<void> _iniciarSesion() async {
     if (_formKey.currentState!.validate()) {
       setState(() => _isLoading = true);
 
       try {
-        // 1. Petición al servidor (Ahora apunta a Render en la nube)
         final response = await http.post(
           Uri.parse('$baseUrl/login'),
           headers: {'Content-Type': 'application/json'},
           body: jsonEncode({
-            'correo': _correoController.text.trim(),
-            'clave': _claveController.text,
+            // CORRECCIÓN 1: El servidor en Python espera 'email' y 'password'
+            'email': _correoController.text.trim(),
+            'password': _claveController.text,
           }),
-        ).timeout(const Duration(seconds: 15)); // Agregamos timeout por si Render está despertando
+        ).timeout(const Duration(seconds: 15)); 
 
         if (response.statusCode == 200) {
           final data = jsonDecode(response.body);
-          final userData = data['userData'];
+          
+          // CORRECCIÓN 2: El nuevo app.py devuelve los datos en la llave 'usuario'
+          final userData = data['usuario'];
 
-          // 2. GUARDAMOS LOS DATOS REALES (Vienen de Neon)
           SharedPreferences prefs = await SharedPreferences.getInstance();
           await prefs.setBool('isLoggedIn', true);
-          // Guardamos el ID como entero para la bolsa de pedidos
-          await prefs.setInt('repartidor_id', int.parse(userData['id']));
+          
+          // Guardamos los datos asegurando que el formato no rompa la app
+          await prefs.setInt('repartidor_id', int.parse(userData['id'].toString()));
           await prefs.setString('nombre_repartidor', userData['nombre']);
-          await prefs.setString('userId', userData['id'].toString()); // ID real de DB
-          await prefs.setString('nombre', userData['nombre']); // Nombre real de DB
-          await prefs.setString('correo', userData['correo']); // Correo real de DB
+          await prefs.setString('userId', userData['id'].toString()); 
+          await prefs.setString('nombre', userData['nombre']); 
+          // CORRECCIÓN 3: El servidor devuelve el correo en la llave 'email'
+          await prefs.setString('correo', userData['email']); 
 
           if (mounted) {
-            // 3. Navegamos al Home con datos reales
             Navigator.pushReplacementNamed(context, '/home');
           }
         } else {
-          // Error de credenciales (401 u otros)
+          // Error de credenciales o de falta de aprobación (401 o 403)
           final errorData = jsonDecode(response.body);
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text(errorData['error'] ?? "Error al iniciar sesión")),
+              // CORRECCIÓN 4: El servidor manda la razón del error en 'mensaje'
+              SnackBar(content: Text(errorData['mensaje'] ?? "Error al iniciar sesión")),
             );
           }
         }
       } catch (e) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text("Error de conexión o el servidor está despertando")),
+            const SnackBar(content: Text("Error de conexión con el servidor")),
           );
         }
       } finally {
@@ -123,7 +125,7 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
               const SizedBox(height: 30),
 
-              // Botón de Ingreso con indicador de carga
+              // Botón de Ingreso
               ElevatedButton(
                 onPressed: _isLoading ? null : _iniciarSesion,
                 style: ElevatedButton.styleFrom(

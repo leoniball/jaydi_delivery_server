@@ -79,7 +79,7 @@ class _VerificacionDocumentosScreenState extends State<VerificacionDocumentosScr
       if (userId == null) throw Exception("Error: No se encontró el ID de usuario.");
 
       // CAMBIO AQUÍ: Ahora apunta a Render en la nube
-      var url = Uri.parse('https://jaydi-server.onrender.com/subir_documento');
+      var url = Uri.parse('https://jaydi-delivery-serverv.onrender.com/subir_documento');
 
       for (var req in _requisitos) {
         if (req['path'] == null || req['path'].isEmpty) continue;

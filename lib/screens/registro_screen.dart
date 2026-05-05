@@ -21,7 +21,7 @@ class _RegistroScreenState extends State<RegistroScreen> {
   bool _cargando = false;
 
   // URL DE TU SERVIDOR EN RENDER
-  static const String baseUrl = 'https://jaydi-server.onrender.com';
+  static const String baseUrl = 'https://jaydi-delivery-serverv.onrender.com';
 
   Future<void> _registrar() async {
     if (_formKey.currentState!.validate()) {

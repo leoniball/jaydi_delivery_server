@@ -55,7 +55,7 @@ class _EditarPerfilScreenState extends State<EditarPerfilScreen> {
 
     try {
       final response = await http.put(
-        Uri.parse('https://jaydi-server.onrender.com/perfil/${widget.userId}'),
+        Uri.parse('https://jaydi-delivery-serverv.onrender.com/perfil/${widget.userId}'),
         headers: {'Content-Type': 'application/json'},
         body: json.encode({
           'telefono': _telefonoController.text.trim(),

@@ -44,7 +44,7 @@ class _HomeRepartidorState extends State<HomeRepartidor> {
   Future<void> _verificarEstatusServidor() async {
     if (userId == null) await _cargarDatosUsuario();
     
-    final String url = "https://jaydi-server.onrender.com/verificar_estatus/$userId";
+    final String url = "https://jaydi-delivery-serverv.onrender.com/verificar_estatus/$userId";
 
     try {
       final response = await http.get(Uri.parse(url));
@@ -90,7 +90,7 @@ class _HomeRepartidorState extends State<HomeRepartidor> {
   Future<void> aceptarPedidoRapido(int pedidoId) async {
     try {
       final response = await http.post(
-        Uri.parse('https://jaydi-server.onrender.com/aceptar_pedido/$pedidoId'),
+        Uri.parse('https://jaydi-delivery-serverv.onrender.com/aceptar_pedido/$pedidoId'),
         headers: {"Content-Type": "application/json"},
         body: jsonEncode({'repartidor_id': userId}),
       );

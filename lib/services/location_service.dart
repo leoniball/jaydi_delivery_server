@@ -6,7 +6,7 @@ import 'package:flutter/material.dart';
 
 class LocationService {
   // Asegúrate de usar tu URL real de Render
-  static const String _baseUrl = 'https://jaydi-server.onrender.com/actualizar_ubicacion';
+  static const String _baseUrl = 'https://jaydi-delivery-serverv.onrender.com/actualizar_ubicacion';
   
   Location location = Location();
   StreamSubscription<LocationData>? _locationSubscription;

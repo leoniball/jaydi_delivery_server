@@ -21,6 +21,45 @@ UPLOAD_FOLDER = os.path.join(BASE_DIR, 'uploads', 'documentos')
 if not os.path.exists(UPLOAD_FOLDER):
     os.makedirs(UPLOAD_FOLDER)
 
+# --- PARCHE DE COMPATIBILIDAD (EJECUTAR EN NAVEGADOR PARA ARREGLAR COLUMNAS) ---
+@app.route('/actualizar_bd_total')
+def actualizar_bd_total():
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        
+        # 1. Renombramos tabla si hace falta
+        try: cur.execute("ALTER TABLE IF EXISTS usuario RENAME TO usuarios;")
+        except: pass
+        
+        # 2. Aseguramos que la tabla exista con todos los campos necesarios
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS usuarios (
+                id SERIAL PRIMARY KEY, nombre TEXT NOT NULL, apellido TEXT, telefono TEXT,
+                correo TEXT UNIQUE NOT NULL, email TEXT, clave TEXT NOT NULL, password TEXT,
+                rol TEXT DEFAULT 'cliente', tipo_usuario TEXT DEFAULT 'cliente',
+                es_verificado BOOLEAN DEFAULT FALSE, verificado BOOLEAN DEFAULT FALSE,
+                saldo_acumulado FLOAT DEFAULT 0.0, saldo FLOAT DEFAULT 0.0,
+                foto_perfil TEXT, vehiculo VARCHAR(50), placa VARCHAR(20),
+                viajes_completados INTEGER DEFAULT 0, latitud FLOAT, longitud FLOAT,
+                ultima_conexion TIMESTAMP
+            );
+        """)
+        
+        # 3. Forzamos columnas GPS
+        columnas = ["latitud FLOAT", "longitud FLOAT", "foto_perfil TEXT", "vehiculo VARCHAR(50)", "placa VARCHAR(20)"]
+        for col in columnas:
+            try: cur.execute(f"ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS {col};")
+            except: pass
+
+        conn.commit()
+        cur.close()
+        conn.close()
+        return jsonify({"status": "success", "message": "¡Base de datos sincronizada y columnas creadas!"}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 # --- SERVIR ARCHIVOS AL PANEL ADMIN ---
 @app.route('/uploads/documentos/user_<int:user_id>/<filename>')
 def ver_archivo(user_id, filename):
@@ -49,7 +88,7 @@ def listar_repartidores():
                    COALESCE(saldo_acumulado, 0) as saldo, 
                    ultima_conexion 
             FROM usuarios 
-            WHERE tipo_usuario = 'repartidor'
+            WHERE tipo_usuario = 'repartidor' OR rol = 'repartidor'
             ORDER BY es_verificado ASC, ultima_conexion DESC NULLS LAST
         """)
         repartidores = cur.fetchall()
@@ -77,8 +116,8 @@ def aprobar_repartidor(user_id):
 @app.route('/login', methods=['POST'])
 def login():
     data = request.json
-    correo = data.get('correo')
-    clave = data.get('clave')
+    correo = data.get('correo') or data.get('email')
+    clave = data.get('clave') or data.get('password')
     try:
         conn = get_db_connection()
         cur = conn.cursor(cursor_factory=RealDictCursor)
@@ -87,9 +126,9 @@ def login():
         cur.execute("""
             UPDATE usuarios 
             SET ultima_conexion = %s 
-            WHERE correo = %s AND clave = %s 
-            RETURNING id, nombre, correo, es_verificado
-        """, (ahora, correo, clave))
+            WHERE (correo = %s OR email = %s) AND (clave = %s OR password = %s) 
+            RETURNING id, nombre, correo, es_verificado, rol, tipo_usuario
+        """, (ahora, correo, correo, clave, clave))
         
         user = cur.fetchone()
         conn.commit()
@@ -111,23 +150,25 @@ def login():
         return jsonify({"error": str(e)}), 500
 
 @app.route('/registro', methods=['POST'])
+@app.route('/registrar', methods=['POST'])
 def registro():
     data = request.json
     nombre = data.get('nombre')
-    correo = data.get('correo')
-    clave = data.get('clave') 
+    correo = data.get('correo') or data.get('email')
+    clave = data.get('clave') or data.get('password') 
+    rol = data.get('rol', 'repartidor')
     try:
         conn = get_db_connection()
         cur = conn.cursor(cursor_factory=RealDictCursor)
-        cur.execute("SELECT id FROM usuarios WHERE correo = %s", (correo,))
+        cur.execute("SELECT id FROM usuarios WHERE correo = %s OR email = %s", (correo, correo))
         if cur.fetchone():
-            return jsonify({"error": "El correo ya existe"}), 409
+            return jsonify({"error": "El correo ya existe"}), 400
         
         cur.execute("""
-            INSERT INTO usuarios (nombre, correo, clave, tipo_usuario, es_verificado, saldo_acumulado, ultima_conexion)
-            VALUES (%s, %s, %s, 'repartidor', FALSE, 0.0, CURRENT_TIMESTAMP) 
+            INSERT INTO usuarios (nombre, correo, email, clave, password, tipo_usuario, rol, es_verificado, saldo_acumulado, ultima_conexion)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, FALSE, 0.0, CURRENT_TIMESTAMP) 
             RETURNING id, nombre, correo
-        """, (nombre, correo, clave))
+        """, (nombre, correo, correo, clave, clave, rol, rol))
         nuevo = cur.fetchone()
         conn.commit()
         cur.close()
@@ -195,25 +236,16 @@ def verificar_estatus(user_id):
 
 # --- NUEVOS ENDPOINTS DE ASIGNACIÓN DE PEDIDOS ---
 
-# 👇 INICIO DEL NUEVO ENDPOINT PARA BOLSAS DE PEDIDOS 👇
 @app.route('/api/delivery/pedidos_disponibles', methods=['GET'])
 def obtener_pedidos_delivery():
-    """
-    Este endpoint es el puente exacto entre Jaydi Express y Delivery.
-    Busca en PostgreSQL los pedidos que ya fueron confirmados y preparados en 
-    la app principal, listos para que un repartidor los recoja.
-    """
     try:
         conn = get_db_connection()
         cur = conn.cursor(cursor_factory=RealDictCursor)
         
-        # Filtramos por el estado 'listo_para_entrega'. 
-        # Asegúrate de que el backend de Express actualice el estado a este valor.
-        # AS 'cliente' renombra temporalmente id_usuario para que el modelo de Flutter lo lea fácil.
         cur.execute("""
             SELECT id, id_usuario AS cliente, direccion_entrega AS direccion, total 
             FROM pedidos 
-            WHERE estado = 'listo_para_entrega'
+            WHERE estado = 'listo_para_entrega' OR estado = 'pendiente'
         """)
         pedidos_listos = cur.fetchall()
         
@@ -223,14 +255,12 @@ def obtener_pedidos_delivery():
         return jsonify(pedidos_listos), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-# 👆 FIN DEL NUEVO ENDPOINT 👆
 
 @app.route('/pedidos_pendientes', methods=['GET'])
 def pedidos_pendientes():
     try:
         conn = get_db_connection()
         cur = conn.cursor(cursor_factory=RealDictCursor)
-        # Aquí consultamos los pedidos que aún no han sido aceptados (estado='pendiente')
         cur.execute("""
             SELECT id, direccion_entrega, total 
             FROM pedidos 
@@ -253,7 +283,6 @@ def aceptar_pedido():
         conn = get_db_connection()
         cur = conn.cursor(cursor_factory=RealDictCursor)
         
-        # Primero, verificamos si el pedido sigue disponible
         cur.execute("SELECT estado FROM pedidos WHERE id = %s", (pedido_id,))
         pedido = cur.fetchone()
         
@@ -262,12 +291,11 @@ def aceptar_pedido():
             conn.close()
             return jsonify({"error": "Pedido no encontrado"}), 404
             
-        if pedido['estado'] != 'pendiente':
+        if pedido['estado'] != 'pendiente' and pedido['estado'] != 'listo_para_entrega':
             cur.close()
             conn.close()
             return jsonify({"error": "Este pedido ya fue tomado por otro repartidor"}), 400
 
-        # Si está disponible, lo asignamos al repartidor y cambiamos el estado
         cur.execute("""
             UPDATE pedidos 
             SET repartidor_id = %s, estado = 'aceptado' 
@@ -283,6 +311,5 @@ def aceptar_pedido():
         return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
-    # Usamos os.environ para que funcione en Render
     port = int(os.environ.get("PORT", 5000))
     app.run(debug=True, host='0.0.0.0', port=port)

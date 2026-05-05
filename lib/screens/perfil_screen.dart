@@ -53,7 +53,7 @@ class _PerfilScreenState extends State<PerfilScreen> {
     if (idPersistido != null) {
       try {
         // 1. Verificar Estatus
-        final urlVerificar = "https://jaydi-delivery-serverv.onrender.com/verificar_estatus/$idPersistido";
+        final urlVerificar = "https://jaydi-server.onrender.com/verificar_estatus/$idPersistido";
         final responseVerificar = await http.get(Uri.parse(urlVerificar));
         
         if (responseVerificar.statusCode == 200) {
@@ -66,7 +66,7 @@ class _PerfilScreenState extends State<PerfilScreen> {
         }
 
         // 2. Traer Estadísticas y Foto
-        final urlPerfil = "https://jaydi-delivery-serverv.onrender.com/perfil/$idPersistido";
+        final urlPerfil = "https://jaydi-server.onrender.com/perfil/$idPersistido";
         final responsePerfil = await http.get(Uri.parse(urlPerfil));
 
         if (responsePerfil.statusCode == 200) {
@@ -111,7 +111,7 @@ class _PerfilScreenState extends State<PerfilScreen> {
         String base64String = base64Encode(imageBytes);
 
         final response = await http.put(
-          Uri.parse('https://jaydi-delivery-serverv.onrender.com/perfil/$userId'),
+          Uri.parse('https://jaydi-server.onrender.com/perfil/$userId'),
           headers: {'Content-Type': 'application/json'},
           body: json.encode({'foto_perfil': base64String}),
         );

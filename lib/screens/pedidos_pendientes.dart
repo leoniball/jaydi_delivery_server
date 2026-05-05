@@ -14,7 +14,7 @@ class PedidosPendientesScreen extends StatefulWidget {
 }
 
 class _PedidosPendientesScreenState extends State<PedidosPendientesScreen> {
-  static const String baseUrl = 'https://jaydi-delivery-serverv.onrender.com';
+  static const String baseUrl = 'https://jaydi-server.onrender.com';
 
   List<dynamic> pedidos = [];
   bool isLoading = true;

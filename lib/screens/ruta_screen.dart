@@ -28,7 +28,7 @@ class _RutaScreenState extends State<RutaScreen> {
       try {
         // Llamamos a la nueva ruta que pusiste en app.py
         final response = await http.get(
-          Uri.parse('https://jaydi-delivery-serverv.onrender.com/historial_viajes/$userId')
+          Uri.parse('https://jaydi-server.onrender.com/historial_viajes/$userId')
         );
 
         if (response.statusCode == 200) {

@@ -31,7 +31,7 @@ class BolsasPedidosScreen extends StatefulWidget {
 
 class _BolsasPedidosScreenState extends State<BolsasPedidosScreen> {
   // ✅ URL de tu servidor en Render configurada
-  final String baseUrl = 'https://jaydi-delivery-serverv.onrender.com';
+  final String baseUrl = 'https://jaydi-server.onrender.com';
   
   List<Pedido> pedidos = [];
   bool isLoading = true;

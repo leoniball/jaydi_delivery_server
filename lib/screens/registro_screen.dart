@@ -48,19 +48,28 @@ class _RegistroScreenState extends State<RegistroScreen> {
           // REGISTRO EXITOSO
           SharedPreferences prefs = await SharedPreferences.getInstance();
           
-          // 🔥 AQUÍ ESTABA EL ERROR: El backend manda 'userData', no 'usuario'
-          final userData = data['userData'];
-
-          await prefs.setString('userId', userData['id'].toString());
-          await prefs.setString('nombre', userData['nombre']);
-          // 🔥 Y el backend devuelve 'correo', no 'email' en la respuesta
-          await prefs.setString('email', userData['correo']);
+          // 🔥 MAGIA AQUÍ: Leemos los datos sin importar si responde Express o Delivery
+          if (data.containsKey('userData')) {
+            final userData = data['userData'];
+            await prefs.setString('userId', userData['id'].toString());
+            await prefs.setString('nombre', userData['nombre']);
+            await prefs.setString('email', userData['correo'] ?? userData['email']);
+          } else if (data.containsKey('usuario')) {
+            final userData = data['usuario'];
+            await prefs.setString('userId', userData['id'].toString());
+            await prefs.setString('nombre', userData['nombre']);
+            await prefs.setString('email', userData['email']);
+          }
+          // Nota: Si el servidor solo manda "mensaje" y no manda los datos del usuario, 
+          // igual lo dejamos pasar porque el registro en Neon sí fue exitoso.
+          
           await prefs.setBool('isLoggedIn', true);
 
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
-                content: Text("¡Registro exitoso! Espera aprobación del administrador."),
+                content: Text("¡Registro exitoso! Espera aprobación del administrador.",
+                style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                 backgroundColor: Colors.green,
               ),
             );
@@ -68,14 +77,15 @@ class _RegistroScreenState extends State<RegistroScreen> {
             Navigator.pushReplacementNamed(context, '/home');
           }
         } else {
-          // 🔥 CORRECCIÓN: Tu backend manda los errores en la llave 'error', no 'mensaje'
+          // 🔥 MAGIA 2: Buscamos el error exacto ya sea en 'mensaje' o en 'error'
           if (mounted) {
-            _mostrarError(data['error'] ?? "Error al registrar");
+            final errorReal = data['mensaje'] ?? data['error'] ?? "Error desconocido al registrar";
+            _mostrarError(errorReal);
           }
         }
       } catch (e) {
         if (mounted) {
-          _mostrarError("No se pudo conectar con el servidor. Reintenta.");
+          _mostrarError("Problema de conexión con el servidor.");
         }
       } finally {
         if (mounted) setState(() => _cargando = false);

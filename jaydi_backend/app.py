@@ -17,7 +17,14 @@ CORS(app)
 DB_URL = os.environ.get('DATABASE_URL', '')
 
 def get_db_connection():
-    return psycopg2.connect(DB_URL)
+    # 🔥 ESTO ES LO NUEVO: "Latidos" (keepalives) para que Neon no cierre la conexión SSL
+    return psycopg2.connect(
+        DB_URL,
+        keepalives=1,
+        keepalives_idle=30,
+        keepalives_interval=10,
+        keepalives_count=5
+    )
 
 # RUTA CRÍTICA: Definimos la ruta absoluta para que Flask no se pierda buscando archivos
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))

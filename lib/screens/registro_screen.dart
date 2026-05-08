@@ -155,9 +155,10 @@ class _RegistroScreenState extends State<RegistroScreen> {
                   labelText: "Contraseña", 
                   border: OutlineInputBorder()
                 ),
+                // AQUÍ EL CAMBIO: Libre elección de contraseña
                 validator: (value) {
-                  if (value!.length < 6 || value.length > 12) {
-                    return "La clave debe tener entre 6 y 12 dígitos";
+                  if (value == null || value.isEmpty) {
+                    return "Campo obligatorio";
                   }
                   return null;
                 },

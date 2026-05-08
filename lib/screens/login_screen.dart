@@ -121,7 +121,8 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(15)),
                 ),
-                validator: (value) => value!.length < 6 ? "Mínimo 6 caracteres" : null,
+                // AQUÍ EL CAMBIO: Libre elección al iniciar sesión
+                validator: (value) => value!.isEmpty ? "Campo obligatorio" : null,
               ),
               const SizedBox(height: 30),
 

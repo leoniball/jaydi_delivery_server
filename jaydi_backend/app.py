@@ -5,11 +5,16 @@ import psycopg2
 from psycopg2.extras import RealDictCursor
 from datetime import datetime
 
+# --- NUEVO: IMPORTAR Y CARGAR VARIABLES DE ENTORNO OCULTAS ---
+from dotenv import load_dotenv
+load_dotenv()
+
 app = Flask(__name__)
 CORS(app)
 
 # --- CONFIGURACIÓN DE BASE DE DATOS (NEON) ---
-DB_URL = "postgresql://neondb_owner:npg_hF4PjcEJq5RO@ep-jolly-waterfall-amgwvrji-pooler.c-5.us-east-1.aws.neon.tech/neondb?sslmode=require"
+# Ahora busca en tu archivo .env, si no lo encuentra, queda vacío (seguro para GitHub)
+DB_URL = os.environ.get('DATABASE_URL', '')
 
 def get_db_connection():
     return psycopg2.connect(DB_URL)

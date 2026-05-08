@@ -36,9 +36,9 @@ class _RegistroScreenState extends State<RegistroScreen> {
             "nombre": _nombreController.text.trim(),
             "apellido": _apellidoController.text.trim(),
             "telefono": _telefonoController.text.trim(),
-            "email": _correoController.text.trim(), // 'email' para el Python blindado
-            "password": _claveController.text,      // 'password' para el Python blindado
-            "rol": "repartidor"                     // Forzamos el rol para el Panel Admin
+            "email": _correoController.text.trim(),
+            "password": _claveController.text,      
+            "rol": "repartidor"                     
           }),
         ).timeout(const Duration(seconds: 15));
 
@@ -48,10 +48,13 @@ class _RegistroScreenState extends State<RegistroScreen> {
           // REGISTRO EXITOSO
           SharedPreferences prefs = await SharedPreferences.getInstance();
           
-          // Accedemos al objeto 'usuario' que devuelve el nuevo app.py
-          await prefs.setString('userId', data['usuario']['id'].toString());
-          await prefs.setString('nombre', data['usuario']['nombre']);
-          await prefs.setString('email', data['usuario']['email']);
+          // 🔥 AQUÍ ESTABA EL ERROR: El backend manda 'userData', no 'usuario'
+          final userData = data['userData'];
+
+          await prefs.setString('userId', userData['id'].toString());
+          await prefs.setString('nombre', userData['nombre']);
+          // 🔥 Y el backend devuelve 'correo', no 'email' en la respuesta
+          await prefs.setString('email', userData['correo']);
           await prefs.setBool('isLoggedIn', true);
 
           if (mounted) {
@@ -65,9 +68,9 @@ class _RegistroScreenState extends State<RegistroScreen> {
             Navigator.pushReplacementNamed(context, '/home');
           }
         } else {
-          // Capturamos el mensaje de error del servidor (Ej: correo duplicado)
+          // 🔥 CORRECCIÓN: Tu backend manda los errores en la llave 'error', no 'mensaje'
           if (mounted) {
-            _mostrarError(data['mensaje'] ?? "Error al registrar");
+            _mostrarError(data['error'] ?? "Error al registrar");
           }
         }
       } catch (e) {
@@ -155,7 +158,6 @@ class _RegistroScreenState extends State<RegistroScreen> {
                   labelText: "Contraseña", 
                   border: OutlineInputBorder()
                 ),
-                // AQUÍ EL CAMBIO: Libre elección de contraseña
                 validator: (value) {
                   if (value == null || value.isEmpty) {
                     return "Campo obligatorio";

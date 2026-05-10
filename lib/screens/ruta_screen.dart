@@ -2,6 +2,8 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
+// ---> NUEVO: Importamos la pantalla de chat que acabas de crear
+import 'chat_domiciliario_screen.dart';
 
 class RutaScreen extends StatefulWidget {
   const RutaScreen({super.key});
@@ -44,6 +46,19 @@ class _RutaScreenState extends State<RutaScreen> {
         if (mounted) setState(() => cargando = false);
       }
     }
+  }
+
+  // ---> NUEVO: Función para abrir el chat desde esta pantalla <---
+  void _abrirChatDelPedido(int idPedido, String estado) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => ChatDomiciliarioScreen(
+          pedidoId: idPedido,
+          estadoPedido: estado, 
+        ),
+      ),
+    );
   }
 
   @override
@@ -106,6 +121,12 @@ class _RutaScreenState extends State<RutaScreen> {
   }
 
   Widget _buildViajeCard(Map viaje) {
+    // Si el backend te enviara el estado, lo usaríamos. Como asumo que este historial 
+    // trae entregados y en curso, ponemos 'entregado' por defecto temporalmente 
+    // o el que venga del backend si lo actualizas luego.
+    String estadoActual = viaje['estado'] ?? 'entregado'; 
+    int pedidoId = viaje['id'] ?? 0;
+
     return Container(
       margin: const EdgeInsets.only(bottom: 15),
       padding: const EdgeInsets.all(15),
@@ -114,20 +135,43 @@ class _RutaScreenState extends State<RutaScreen> {
         borderRadius: BorderRadius.circular(15),
         boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 10)],
       ),
-      child: Row(
+      child: Column(
         children: [
-          const Icon(Icons.check_circle, color: Colors.green, size: 30),
-          const SizedBox(width: 15),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(viaje['direccion'], style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14), maxLines: 1, overflow: TextOverflow.ellipsis),
-                Text(viaje['fecha'], style: const TextStyle(color: Colors.grey, fontSize: 12)),
-              ],
-            ),
+          Row(
+            children: [
+              const Icon(Icons.check_circle, color: Colors.green, size: 30),
+              const SizedBox(width: 15),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(viaje['direccion'], style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14), maxLines: 1, overflow: TextOverflow.ellipsis),
+                    Text(viaje['fecha'], style: const TextStyle(color: Colors.grey, fontSize: 12)),
+                  ],
+                ),
+              ),
+              Text("\$${viaje['total']}", style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16, color: Color(0xFFFF5722))),
+            ],
           ),
-          Text("\$${viaje['total']}", style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16, color: Color(0xFFFF5722))),
+          // ---> NUEVO: Añadimos un botón de chat si el pedido existe
+          if (pedidoId != 0) ...[
+            const Divider(height: 20),
+            Align(
+              alignment: Alignment.centerRight,
+              child: OutlinedButton.icon(
+                onPressed: () => _abrirChatDelPedido(pedidoId, estadoActual),
+                icon: const Icon(Icons.chat_bubble_outline, size: 18),
+                label: const Text("Abrir Chat"),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Colors.blue[800],
+                  side: BorderSide(color: Colors.blue.shade800),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
+              ),
+            ),
+          ]
         ],
       ),
     );

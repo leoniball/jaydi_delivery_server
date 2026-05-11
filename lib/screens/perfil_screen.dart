@@ -14,13 +14,11 @@ class PerfilScreen extends StatefulWidget {
 }
 
 class _PerfilScreenState extends State<PerfilScreen> {
-  // Variables Originales (Ajustado a email)
   String nombreUsuario = "Cargando...";
-  String emailUsuario = "..."; // <- Hablamos el mismo idioma
+  String emailUsuario = "..."; 
   bool esVerificado = false;
   bool cargando = true;
 
-  // --- NUEVAS VARIABLES DE PERFIL ---
   String? userId; 
   String telefono = "Sin registrar";
   String vehiculo = "Sin registrar";
@@ -35,26 +33,36 @@ class _PerfilScreenState extends State<PerfilScreen> {
     _cargarDatosYVerificar();
   }
 
+  // MEJORA: Centralizamos la URL para evitar errores de tipeo
+  static const String baseUrl = 'https://jaydi-delivery-serverv.onrender.com';
+
   Future<void> _cargarDatosYVerificar() async {
-    SharedPreferences prefs = await SharedPreferences.getInstance();
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
     
     final String? idPersistido = prefs.getString('userId');
     final String? nombrePersistido = prefs.getString('nombre');
-    final String? emailPersistido = prefs.getString('email'); // <- Hablamos el mismo idioma
+    final String? apellidoPersistido = prefs.getString('apellido'); 
+    final String? emailPersistido = prefs.getString('email'); 
+
+    String nombreCompletoCalculado = "Usuario Jaydi";
+    if (nombrePersistido != null) {
+      nombreCompletoCalculado = "$nombrePersistido ${apellidoPersistido ?? ""}".trim();
+    }
 
     if (mounted) {
       setState(() {
         userId = idPersistido; 
-        nombreUsuario = nombrePersistido ?? "Usuario Jaydi";
+        nombreUsuario = nombreCompletoCalculado;
         emailUsuario = emailPersistido ?? "Sin email";
       });
     }
 
     if (idPersistido != null) {
       try {
-        // 1. Verificar Estatus
-        final urlVerificar = "https://jaydi-delivery-serverv.onrender.com/verificar_estatus/$idPersistido";
-        final responseVerificar = await http.get(Uri.parse(urlVerificar));
+        // 1. Verificar Estatus (Consistencia con app.py)
+        final responseVerificar = await http.get(
+          Uri.parse("$baseUrl/verificar_estatus/$idPersistido")
+        ).timeout(const Duration(seconds: 10));
         
         if (responseVerificar.statusCode == 200) {
           final data = jsonDecode(responseVerificar.body);
@@ -62,12 +70,15 @@ class _PerfilScreenState extends State<PerfilScreen> {
             setState(() {
               esVerificado = data['es_verificado'] ?? false; 
             });
+            // Guardamos localmente por si otras pantallas lo necesitan
+            await prefs.setBool('es_verificado', esVerificado);
           }
         }
 
-        // 2. Traer Estadísticas y Foto
-        final urlPerfil = "https://jaydi-delivery-serverv.onrender.com/perfil/$idPersistido";
-        final responsePerfil = await http.get(Uri.parse(urlPerfil));
+        // 2. Traer Estadísticas (URL Unificada /api/perfil/)
+        final responsePerfil = await http.get(
+          Uri.parse("$baseUrl/api/perfil/$idPersistido")
+        ).timeout(const Duration(seconds: 10));
 
         if (responsePerfil.statusCode == 200) {
           final dataPerfil = jsonDecode(responsePerfil.body);
@@ -82,9 +93,8 @@ class _PerfilScreenState extends State<PerfilScreen> {
             });
           }
         }
-
       } catch (e) {
-        debugPrint("Error de conexión: $e");
+        debugPrint("Error de conexión al cargar perfil: $e");
       }
     }
     
@@ -95,7 +105,8 @@ class _PerfilScreenState extends State<PerfilScreen> {
 
   Future<void> _cambiarFoto() async {
     final ImagePicker picker = ImagePicker();
-    final XFile? image = await picker.pickImage(source: ImageSource.gallery, imageQuality: 50);
+    // Calidad al 40% para que el plan de Render maneje el Base64 más rápido
+    final XFile? image = await picker.pickImage(source: ImageSource.gallery, imageQuality: 40);
 
     if (image != null && userId != null) {
       if (!mounted) return; 
@@ -110,35 +121,38 @@ class _PerfilScreenState extends State<PerfilScreen> {
         Uint8List imageBytes = await image.readAsBytes();
         String base64String = base64Encode(imageBytes);
 
+        // Usamos la ruta /api/perfil que es la que tiene el PUT optimizado
         final response = await http.put(
-          Uri.parse('https://jaydi-delivery-serverv.onrender.com/perfil/$userId'),
+          Uri.parse('$baseUrl/api/perfil/$userId'),
           headers: {'Content-Type': 'application/json'},
           body: json.encode({'foto_perfil': base64String}),
-        );
+        ).timeout(const Duration(seconds: 20));
 
         if (!mounted) return;
         Navigator.pop(context); 
 
         if (response.statusCode == 200) {
-          setState(() {
-            fotoPerfilBase64 = base64String;
-          });
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text("¡Foto actualizada!"), backgroundColor: Colors.green),
-          );
+          setState(() => fotoPerfilBase64 = base64String);
+          _mostrarSnackBar("¡Foto de perfil actualizada!", Colors.green);
+        } else {
+          throw Exception("Error del servidor");
         }
       } catch (e) {
         if (!mounted) return;
         Navigator.pop(context);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Error al subir la foto"), backgroundColor: Colors.red),
-        );
+        _mostrarSnackBar("Error al subir la foto", Colors.red);
       }
     }
   }
 
+  void _mostrarSnackBar(String msj, Color color) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(msj), backgroundColor: color, behavior: SnackBarBehavior.floating),
+    );
+  }
+
   Future<void> _cerrarSesion() async {
-    SharedPreferences prefs = await SharedPreferences.getInstance();
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
     await prefs.clear();
     if (mounted) {
       Navigator.pushNamedAndRemoveUntil(context, '/login', (route) => false);
@@ -153,8 +167,8 @@ class _PerfilScreenState extends State<PerfilScreen> {
       );
     }
 
-    final Color colorEstado = esVerificado ? Colors.green : Colors.red;
-    final String textoEstado = esVerificado ? "🟢 Cuenta Verificada" : "🔴 Cuenta en Revisión";
+    final Color colorEstado = esVerificado ? Colors.green : Colors.orange;
+    final String textoEstado = esVerificado ? "🟢 Cuenta Verificada" : "🟠 Cuenta en Revisión";
 
     return Scaffold(
       backgroundColor: const Color(0xFFF8F9FA),
@@ -165,195 +179,197 @@ class _PerfilScreenState extends State<PerfilScreen> {
         backgroundColor: Colors.white,
         iconTheme: const IconThemeData(color: Colors.black87),
       ),
-      body: SingleChildScrollView(
-        child: Column(
-          children: [
-            const SizedBox(height: 30),
-            
-            Center(
-              child: Stack(
-                children: [
-                  CircleAvatar(
-                    radius: 60,
-                    backgroundColor: const Color(0x1AFF5722),
-                    backgroundImage: fotoPerfilBase64 != null
-                        ? MemoryImage(base64Decode(fotoPerfilBase64!))
-                        : null,
-                    child: fotoPerfilBase64 == null
-                        ? const Icon(Icons.person, size: 80, color: Color(0xFFFF5722))
-                        : null,
-                  ),
-                  Positioned(
-                    bottom: 0,
-                    right: 0,
-                    child: InkWell(
-                      onTap: _cambiarFoto,
-                      child: Container(
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFFF5722),
-                          shape: BoxShape.circle,
-                          border: Border.all(color: Colors.white, width: 2),
-                        ),
-                        child: const Icon(Icons.camera_alt, color: Colors.white, size: 22),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 20),
-            Text(nombreUsuario.toUpperCase(), style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900)),
-            Text(emailUsuario, style: const TextStyle(fontSize: 15, color: Colors.grey)), // <- Hablamos el mismo idioma
-            const SizedBox(height: 30),
+      body: RefreshIndicator(
+        onRefresh: _cargarDatosYVerificar,
+        color: const Color(0xFFFF5722),
+        child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          child: Column(
+            children: [
+              const SizedBox(height: 30),
+              _buildFotoHeader(),
+              const SizedBox(height: 20),
+              Text(nombreUsuario.toUpperCase(), style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900, letterSpacing: 1)),
+              Text(emailUsuario, style: const TextStyle(fontSize: 14, color: Colors.grey)), 
+              const SizedBox(height: 30),
+              _buildStatsRow(),
+              const SizedBox(height: 25),
+              _buildInfoSection(),
+              const SizedBox(height: 25),
+              _buildStatusBanner(colorEstado, textoEstado),
+              const SizedBox(height: 40),
+              _buildActionButtons(),
+              const SizedBox(height: 40), 
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: Row(
-                children: [
-                  Expanded(child: _buildEstadisticaCard("Ganancias", "\$$saldo", Icons.attach_money, Colors.green)),
-                  const SizedBox(width: 15),
-                  Expanded(child: _buildEstadisticaCard("Viajes", "$viajesCompletados", Icons.motorcycle, Colors.blueAccent)),
-                ],
-              ),
-            ),
-            const SizedBox(height: 20),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: _buildSeccionInfo("Vehículo", vehiculo, Icons.two_wheeler),
-            ),
-            const SizedBox(height: 15),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: _buildSeccionInfo("Placa / Matrícula", placa, Icons.payment),
-            ),
-            const SizedBox(height: 30),
-            
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
+  Widget _buildFotoHeader() {
+    return Center(
+      child: Stack(
+        children: [
+          CircleAvatar(
+            radius: 65,
+            backgroundColor: const Color(0x1AFF5722),
+            backgroundImage: fotoPerfilBase64 != null
+                ? MemoryImage(base64Decode(fotoPerfilBase64!))
+                : null,
+            child: fotoPerfilBase64 == null
+                ? const Icon(Icons.person, size: 80, color: Color(0xFFFF5722))
+                : null,
+          ),
+          Positioned(
+            bottom: 0,
+            right: 0,
+            child: InkWell(
+              onTap: _cambiarFoto,
               child: Container(
-                padding: const EdgeInsets.all(20),
+                padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: colorEstado.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(15),
-                  border: Border.all(color: colorEstado, width: 2),
+                  color: const Color(0xFFFF5722),
+                  shape: BoxShape.circle,
+                  border: Border.all(color: Colors.white, width: 3),
                 ),
-                child: Row(
-                  children: [
-                    Icon(esVerificado ? Icons.verified : Icons.info_outline, color: colorEstado, size: 30),
-                    const SizedBox(width: 15),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(textoEstado, style: TextStyle(color: colorEstado, fontWeight: FontWeight.bold, fontSize: 16)),
-                          const SizedBox(height: 5),
-                          Text(esVerificado 
-                            ? "Ya puedes aceptar pedidos y generar ingresos." 
-                            : "Estamos revisando tus documentos. Te avisaremos pronto.",
-                            style: const TextStyle(fontSize: 13),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
+                child: const Icon(Icons.camera_alt, color: Colors.white, size: 20),
               ),
             ),
-            const SizedBox(height: 40),
-            
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 30),
-              child: ElevatedButton(
-                onPressed: userId != null ? () async {
-                  final resultado = await Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => EditarPerfilScreen(
-                        userId: userId!,
-                        telefonoActual: telefono,
-                        vehiculoActual: vehiculo,
-                        placaActual: placa,
-                      ),
-                    ),
-                  );
+          ),
+        ],
+      ),
+    );
+  }
 
-                  if (resultado == true) {
-                    setState(() => cargando = true);
-                    _cargarDatosYVerificar();
-                  }
-                } : null,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFFFF5722),
-                  minimumSize: const Size(double.infinity, 55),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                ),
-                child: const Text("EDITAR PERFIL", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+  Widget _buildStatsRow() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: Row(
+        children: [
+          Expanded(child: _buildStatCard("Ganancias", "\$${saldo.toStringAsFixed(2)}", Icons.account_balance_wallet, Colors.green)),
+          const SizedBox(width: 15),
+          Expanded(child: _buildStatCard("Viajes", "$viajesCompletados", Icons.directions_bike, Colors.blue)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInfoSection() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: Column(
+        children: [
+          _buildInfoTile("Vehículo", vehiculo, Icons.motorcycle),
+          const SizedBox(height: 12),
+          _buildInfoTile("Placa / Matrícula", placa, Icons.vignette),
+          const SizedBox(height: 12),
+          _buildInfoTile("Teléfono", telefono, Icons.phone_iphone),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatusBanner(Color color, String texto) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: Container(
+        padding: const EdgeInsets.all(15),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(15),
+          border: Border.all(color: color, width: 1.5),
+        ),
+        child: Row(
+          children: [
+            Icon(esVerificado ? Icons.verified_user : Icons.hourglass_top, color: color),
+            const SizedBox(width: 15),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(texto, style: TextStyle(color: color, fontWeight: FontWeight.bold)),
+                  Text(
+                    esVerificado ? "¡Estás listo para trabajar!" : "Tus documentos están en validación.",
+                    style: const TextStyle(fontSize: 12),
+                  ),
+                ],
               ),
             ),
-            const SizedBox(height: 15),
-            
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 30),
-              child: OutlinedButton.icon(
-                onPressed: () => _cerrarSesion(),
-                icon: const Icon(Icons.logout),
-                label: const Text("CERRAR SESIÓN", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: Colors.red,
-                  side: const BorderSide(color: Colors.red, width: 2),
-                  minimumSize: const Size(double.infinity, 55),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                ),
-              ),
-            ),
-            const SizedBox(height: 40), 
           ],
         ),
       ),
     );
   }
 
-  Widget _buildEstadisticaCard(String titulo, String valor, IconData icono, Color color) {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(15),
-        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 10, offset: const Offset(0, 5))],
-      ),
+  Widget _buildActionButtons() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 25),
       child: Column(
         children: [
-          Icon(icono, color: color, size: 30),
-          const SizedBox(height: 10),
-          Text(titulo, style: TextStyle(color: Colors.grey[600], fontSize: 13, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 5),
-          Text(valor, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900)),
+          ElevatedButton(
+            onPressed: userId == null ? null : () async {
+              final res = await Navigator.push(context, MaterialPageRoute(
+                builder: (context) => EditarPerfilScreen(
+                  userId: userId!,
+                  telefonoActual: telefono,
+                  vehiculoActual: vehiculo,
+                  placaActual: placa,
+                )
+              ));
+              if (res == true) _cargarDatosYVerificar();
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFFF5722),
+              minimumSize: const Size(double.infinity, 55),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+            child: const Text("EDITAR DATOS", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          ),
+          const SizedBox(height: 15),
+          TextButton.icon(
+            onPressed: _cerrarSesion,
+            icon: const Icon(Icons.exit_to_app, color: Colors.red),
+            label: const Text("CERRAR SESIÓN", style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildSeccionInfo(String titulo, String valor, IconData icono) {
+  Widget _buildStatCard(String label, String value, IconData icon, Color color) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
+      padding: const EdgeInsets.all(15),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(15),
-        border: Border.all(color: Colors.grey.shade200),
+       boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 5)],
       ),
+      child: Column(
+        children: [
+          Icon(icon, color: color),
+          const SizedBox(height: 8),
+          Text(label, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+          Text(value, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInfoTile(String label, String value, IconData icon) {
+    return Container(
+      padding: const EdgeInsets.all(15),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)),
       child: Row(
         children: [
-          Icon(icono, color: Colors.grey[400], size: 24),
+          Icon(icon, color: Colors.grey, size: 20),
           const SizedBox(width: 15),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(titulo, style: TextStyle(color: Colors.grey[500], fontSize: 12, fontWeight: FontWeight.bold)),
-                Text(valor, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
-              ],
-            ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(label, style: const TextStyle(fontSize: 11, color: Colors.grey, fontWeight: FontWeight.bold)),
+              Text(value, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w500)),
+            ],
           ),
         ],
       ),

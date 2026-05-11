@@ -1,11 +1,12 @@
-import 'dart:io';
-import 'dart:convert';
+
+
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
-import 'perfil_screen.dart';
+// Importamos main_menu para que el flujo sea el correcto tras verificar
+import 'main_menu.dart'; 
 
 class VerificacionDocumentosScreen extends StatefulWidget {
   const VerificacionDocumentosScreen({super.key});
@@ -57,7 +58,7 @@ class _VerificacionDocumentosScreenState extends State<VerificacionDocumentosScr
 
     final XFile? photo = await _picker.pickImage(
       source: fuente,
-      imageQuality: 50,
+      imageQuality: 40, // Bajamos un poco más la calidad para subir más rápido a Render
     );
 
     if (photo != null) {
@@ -76,9 +77,8 @@ class _VerificacionDocumentosScreenState extends State<VerificacionDocumentosScr
       SharedPreferences prefs = await SharedPreferences.getInstance();
       String? userId = prefs.getString('userId');
 
-      if (userId == null) throw Exception("Error: No se encontró el ID de usuario.");
+      if (userId == null) throw Exception("No se encontró sesión activa.");
 
-      // CAMBIO AQUÍ: Ahora apunta a Render en la nube
       var url = Uri.parse('https://jaydi-delivery-serverv.onrender.com/subir_documento');
 
       for (var req in _requisitos) {
@@ -88,43 +88,41 @@ class _VerificacionDocumentosScreenState extends State<VerificacionDocumentosScr
         request.fields['tipo'] = req['id'];
         request.fields['user_id'] = userId;
 
-        File imagenReal = File(req['path']);
-
         request.files.add(await http.MultipartFile.fromPath(
           'file',
-          imagenReal.path,
+          req['path'],
           contentType: MediaType('image', 'jpeg'),
         ));
 
-        debugPrint("🚀 Enviando ${req['id']}...");
-        // Agregamos un timeout de 30 segundos por si las imágenes son pesadas o el internet está lento
-        var streamedResponse = await request.send().timeout(const Duration(seconds: 30));
+        debugPrint("🚀 Subiendo: ${req['id']}");
+        var streamedResponse = await request.send().timeout(const Duration(seconds: 45));
         var response = await http.Response.fromStream(streamedResponse);
 
-        final Map<String, dynamic> responseData = jsonDecode(response.body);
-
         if (response.statusCode != 200) {
-          throw Exception(responseData['error'] ?? "Error al subir ${req['titulo']}");
+          throw Exception("Error al subir ${req['titulo']}");
         }
       }
 
       if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("¡Documentos enviados con éxito! 🚀"), backgroundColor: Colors.green),
+        const SnackBar(
+          content: Text("¡Documentos en revisión! Espera la aprobación."),
+          backgroundColor: Colors.green,
+        ),
       );
 
-      await Future.delayed(const Duration(seconds: 2));
-      if (mounted) {
-        Navigator.pushAndRemoveUntil(
-          context,
-          MaterialPageRoute(builder: (context) => const PerfilScreen()),
-          (route) => false,
-        );
-      }
+      // 🔥 CORRECCIÓN DE FLUJO:
+      // Después de subir todo, mandamos al usuario al menú principal 
+      // para que vea su estatus de "En revisión" correctamente.
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(builder: (context) => const MainMenu()),
+        (route) => false,
+      );
 
     } catch (e) {
-      debugPrint("❌ Error en el servidor: $e");
+      debugPrint("❌ ERROR: $e");
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text("Error: $e"), backgroundColor: Colors.red),
@@ -139,16 +137,15 @@ class _VerificacionDocumentosScreenState extends State<VerificacionDocumentosScr
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text("Verificación de Identidad"),
+        title: const Text("Verificación de Identidad", style: TextStyle(fontWeight: FontWeight.bold)),
         centerTitle: true,
-        elevation: 0,
       ),
       body: Column(
         children: [
           const Padding(
             padding: EdgeInsets.all(20.0),
             child: Text(
-              "Sube fotos nítidas para activar tu cuenta de repartidor.",
+              "Tus documentos serán revisados por el equipo administrativo en menos de 24 horas.",
               style: TextStyle(color: Colors.grey, fontSize: 14),
               textAlign: TextAlign.center,
             ),
@@ -161,30 +158,18 @@ class _VerificacionDocumentosScreenState extends State<VerificacionDocumentosScr
 
                 return Card(
                   margin: const EdgeInsets.symmetric(horizontal: 15, vertical: 6),
-                  elevation: estaSubido ? 0 : 2,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(15),
-                    side: BorderSide(
-                      color: estaSubido ? Colors.green : Colors.grey.shade300,
-                      width: estaSubido ? 2 : 1,
-                    ),
+                    side: BorderSide(color: estaSubido ? Colors.green : Colors.grey.shade300),
                   ),
                   child: ListTile(
                     leading: CircleAvatar(
-                      // CORRECCIÓN AQUÍ: Usando withValues en lugar de withOpacity
-                      backgroundColor: estaSubido 
-                        ? Colors.green.withValues(alpha: 0.1) 
-                        : Colors.orange.withValues(alpha: 0.1),
-                      child: Icon(_requisitos[index]['icon'], 
-                        color: estaSubido ? Colors.green : Colors.orange),
+                      backgroundColor: estaSubido ? Colors.green.withValues(alpha: 0.1) : Colors.orange.withValues(alpha: 0.1),
+                      child: Icon(_requisitos[index]['icon'], color: estaSubido ? Colors.green : Colors.orange),
                     ),
-                    title: Text(_requisitos[index]['titulo'], 
-                      style: const TextStyle(fontWeight: FontWeight.bold)),
-                    subtitle: Text("Estado: ${_requisitos[index]['estado']}"),
-                    trailing: Icon(
-                      estaSubido ? Icons.check_circle : Icons.camera_alt_outlined, 
-                      color: estaSubido ? Colors.green : Colors.grey
-                    ),
+                    title: Text(_requisitos[index]['titulo'], style: const TextStyle(fontWeight: FontWeight.bold)),
+                    subtitle: Text(estaSubido ? "Listo para enviar" : "Pendiente de captura"),
+                    trailing: Icon(estaSubido ? Icons.check_circle : Icons.camera_alt, color: estaSubido ? Colors.green : Colors.grey),
                     onTap: _estaEnviando ? null : () => _capturarDocumento(index),
                   ),
                 );
@@ -200,14 +185,10 @@ class _VerificacionDocumentosScreenState extends State<VerificacionDocumentosScr
                 foregroundColor: Colors.white,
                 minimumSize: const Size(double.infinity, 60),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-                elevation: 5,
               ),
               child: _estaEnviando 
                 ? const CircularProgressIndicator(color: Colors.white) 
-                : const Text(
-                    "ENVIAR A REVISIÓN",
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                  ),
+                : const Text("ENVIAR A REVISIÓN", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
             ),
           )
         ],

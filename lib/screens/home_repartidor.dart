@@ -1,10 +1,10 @@
-import 'dart:convert'; // Para jsonDecode
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
 import 'verificacion_documentos_screen.dart';
 import 'pedidos_pendientes.dart'; 
-import 'main_menu.dart'; // IMPORTANTE: Para el salto a la pantalla de ruta
+import 'main_menu.dart'; 
 
 class HomeRepartidor extends StatefulWidget {
   const HomeRepartidor({super.key});
@@ -16,8 +16,9 @@ class HomeRepartidor extends StatefulWidget {
 class _HomeRepartidorState extends State<HomeRepartidor> {
   bool isOnline = false;
   bool esVerificado = false; 
-  String nombreUsuario = ""; // Lo dejamos vacío por defecto
-  String? userId; // ID dinámico recuperado de la sesión
+  String nombreUsuario = ""; 
+  String emailUsuario = ""; 
+  String? userId; 
   bool cargandoEstatus = true;
 
   @override
@@ -26,7 +27,6 @@ class _HomeRepartidorState extends State<HomeRepartidor> {
     _inicializarDatos();
   }
 
-  // Carga datos de sesión y luego pregunta al servidor el estatus
   Future<void> _inicializarDatos() async {
     await _cargarDatosUsuario();
     await _verificarEstatusServidor();
@@ -35,17 +35,23 @@ class _HomeRepartidorState extends State<HomeRepartidor> {
   Future<void> _cargarDatosUsuario() async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     setState(() {
-      // Busca el nombre individual. Si no hay nada, lo deja vacío.
-      nombreUsuario = prefs.getString('nombre') ?? "";
+      // Intentamos obtener nombre y apellido por separado como se guardan en el Login
+      String nombre = prefs.getString('nombre') ?? "";
+      String apellido = prefs.getString('apellido') ?? "";
+      
+      if (nombre.isNotEmpty) {
+        nombreUsuario = "$nombre $apellido".trim();
+      } else {
+        nombreUsuario = "Usuario"; 
+      }
+      
+      emailUsuario = prefs.getString('email') ?? "Sin email";
       userId = prefs.getString('userId'); 
     });
   }
 
-  // --- FUNCIÓN: CONSULTA A NEON VÍA FLASK ---
   Future<void> _verificarEstatusServidor() async {
     if (userId == null) await _cargarDatosUsuario();
-    
-    // Si después de intentar cargar, sigue siendo nulo, no hacemos la petición para no dar error 500
     if (userId == null) {
       setState(() => cargandoEstatus = false);
       return;
@@ -54,10 +60,12 @@ class _HomeRepartidorState extends State<HomeRepartidor> {
     final String url = "https://jaydi-delivery-serverv.onrender.com/verificar_estatus/$userId";
 
     try {
-      final response = await http.get(Uri.parse(url));
+      final response = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 15));
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        bool nuevoEstatus = data['verificado'] ?? false;
+        
+        // CORRECCIÓN: Buscamos es_verificado que es lo que manda tu Flask ahora
+        bool nuevoEstatus = data['es_verificado'] ?? false;
 
         if (nuevoEstatus == true && esVerificado == false && !cargandoEstatus) {
           _mostrarNotificacionExito();
@@ -68,55 +76,46 @@ class _HomeRepartidorState extends State<HomeRepartidor> {
           cargandoEstatus = false;
         });
       } else {
-        if (mounted) {
-           ScaffoldMessenger.of(context).showSnackBar(
-             const SnackBar(
-               content: Text("Error al verificar estatus con el servidor."),
-               backgroundColor: Colors.red,
-             ),
-           );
-        }
         setState(() => cargandoEstatus = false);
       }
     } catch (e) {
-      if (mounted) {
-         ScaffoldMessenger.of(context).showSnackBar(
-           const SnackBar(
-             content: Text("Error de red. Verifica tu conexión a internet."),
-             backgroundColor: Colors.red,
-             duration: Duration(seconds: 3),
-           ),
-         );
-      }
+      debugPrint("Error de red: $e");
       setState(() => cargandoEstatus = false);
     }
   }
 
-  // --- NUEVA LÓGICA: PROCESAR ACEPTACIÓN Y SALTAR A RUTA ---
+  // --- FUNCIÓN CORREGIDA PARA EL BACKEND ---
   Future<void> aceptarPedidoRapido(int pedidoId) async {
+    if (userId == null) return;
+    
     try {
+      // Cambiado para que coincida con tu endpoint de Flask: @app.route('/aceptar_pedido', methods=['POST'])
       final response = await http.post(
-        Uri.parse('https://jaydi-delivery-serverv.onrender.com/aceptar_pedido/$pedidoId'),
+        Uri.parse('https://jaydi-delivery-serverv.onrender.com/aceptar_pedido'),
         headers: {"Content-Type": "application/json"},
-        body: jsonEncode({'repartidor_id': userId}),
+        body: jsonEncode({
+          'pedido_id': pedidoId,
+          'repartidor_id': int.parse(userId!), // Convertimos a int para el backend
+        }),
       );
 
       if (response.statusCode == 200) {
         if (mounted) {
-          // EL SALTO DE FE: 
           Navigator.pushAndRemoveUntil(
             context,
             MaterialPageRoute(builder: (context) => const MainMenu()),
             (route) => false,
           );
         }
+      } else {
+        final errorData = jsonDecode(response.body);
+        debugPrint("Error del servidor: ${errorData['error']}");
       }
     } catch (e) {
       debugPrint("Error al aceptar viaje: $e");
     }
   }
 
-  // --- FUNCIÓN DE CIERRE DE SESIÓN ---
   Future<void> _cerrarSesion() async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     await prefs.clear(); 
@@ -125,7 +124,6 @@ class _HomeRepartidorState extends State<HomeRepartidor> {
     }
   }
 
-  // --- WIDGET: SNACKBAR DE ÉXITO ---
   void _mostrarNotificacionExito() {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -172,15 +170,10 @@ class _HomeRepartidorState extends State<HomeRepartidor> {
               Navigator.pop(context);
               Navigator.push(
                 context,
-                MaterialPageRoute(
-                  builder: (context) => const VerificacionDocumentosScreen(),
-                ),
+                MaterialPageRoute(builder: (context) => const VerificacionDocumentosScreen()),
               );
             },
-            child: const Text(
-              "SUBIR AHORA", 
-              style: TextStyle(color: Color(0xFFFF5722), fontWeight: FontWeight.bold),
-            ),
+            child: const Text("SUBIR AHORA", style: TextStyle(color: Color(0xFFFF5722), fontWeight: FontWeight.bold)),
           ),
           TextButton(
             onPressed: () => Navigator.pop(context),
@@ -196,17 +189,13 @@ class _HomeRepartidorState extends State<HomeRepartidor> {
     return Scaffold(
       backgroundColor: const Color(0xFFF8F9FA),
       appBar: AppBar(
-        title: const Text(
-          'JAYDI DELIVERY',
-          style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 2),
-        ),
+        title: const Text('JAYDI DELIVERY', style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 2)),
         centerTitle: true,
         elevation: 0,
         backgroundColor: Colors.white,
         leading: IconButton(
           icon: const Icon(Icons.logout, color: Colors.redAccent),
           onPressed: _cerrarSesion,
-          tooltip: "Cerrar Sesión",
         ),
         actions: [
           IconButton(
@@ -224,66 +213,55 @@ class _HomeRepartidorState extends State<HomeRepartidor> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const SizedBox(height: 25),
-              
-              // LÓGICA DINÁMICA: Si hay nombre, lo saluda por su nombre. Si no, solo "¡Hola!"
               Text(
                 nombreUsuario.isEmpty ? "¡Hola!" : "¡Hola, $nombreUsuario!",
                 style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
               ),
-              const SizedBox(height: 5),
-              
+              if (emailUsuario.isNotEmpty)
+                Text(emailUsuario, style: const TextStyle(color: Colors.grey, fontSize: 14)),
+              const SizedBox(height: 10),
               cargandoEstatus 
-              ? const LinearProgressIndicator() 
+              ? const LinearProgressIndicator(color: Color(0xFFFF5722)) 
               : Row(
-                children: [
-                  Icon(
-                    Icons.circle,
-                    size: 12,
-                    color: !esVerificado ? Colors.orange : (isOnline ? Colors.green : Colors.red),
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    !esVerificado 
-                      ? "Esperando verificación de documentos" 
-                      : (isOnline ? "Conectado y buscando pedidos" : "Desconectado"),
-                    style: TextStyle(
-                      fontSize: 16,
-                      color: !esVerificado ? Colors.orange[800] : (isOnline ? Colors.green[700] : Colors.red[700]),
-                      fontWeight: FontWeight.w500,
+                  children: [
+                    Icon(
+                      Icons.circle,
+                      size: 12,
+                      color: !esVerificado ? Colors.orange : (isOnline ? Colors.green : Colors.red),
                     ),
-                  ),
-                ],
-              ),
-
-              const SizedBox(height: 35),
-
-              if (!esVerificado) _buildAvisoPendiente(),
-
-              if (isOnline && esVerificado) ...[
-                const Text(
-                  "Zona de Trabajo Activa",
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                    const SizedBox(width: 8),
+                    Text(
+                      !esVerificado 
+                        ? "Esperando verificación de documentos" 
+                        : (isOnline ? "Conectado y buscando pedidos" : "Desconectado"),
+                      style: TextStyle(
+                        fontSize: 16,
+                        color: !esVerificado ? Colors.orange[800] : (isOnline ? Colors.green[700] : Colors.red[700]),
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
                 ),
+              const SizedBox(height: 35),
+              if (!esVerificado) _buildAvisoPendiente(),
+              if (isOnline && esVerificado) ...[
+                const Text("Zona de Trabajo Activa", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 15),
                 _buildBolsaPedidosButton(),
               ] else if (esVerificado)
                 _buildOfflineState()
               else
                 const SizedBox.shrink(), 
-              
               const SizedBox(height: 100), 
             ],
           ),
         ),
       ),
-
       floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () {
           if (esVerificado) {
-            setState(() {
-              isOnline = !isOnline;
-            });
+            setState(() => isOnline = !isOnline);
           } else {
             _mostrarAvisoVerificacion();
           }
@@ -298,12 +276,7 @@ class _HomeRepartidorState extends State<HomeRepartidor> {
 
   Widget _buildAvisoPendiente() {
     return InkWell(
-      onTap: () {
-        Navigator.push(
-          context,
-          MaterialPageRoute(builder: (context) => const VerificacionDocumentosScreen()),
-        );
-      },
+      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const VerificacionDocumentosScreen())),
       child: Container(
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
@@ -328,50 +301,22 @@ class _HomeRepartidorState extends State<HomeRepartidor> {
 
   Widget _buildBolsaPedidosButton() {
     return InkWell(
-      onTap: () {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => PedidosPendientesScreen(repartidorId: userId ?? "0"),
-          ),
-        );
-      },
+      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => PedidosPendientesScreen(repartidorId: userId ?? "0"))),
       child: Container(
         width: double.infinity,
         padding: const EdgeInsets.all(25),
         decoration: BoxDecoration(
-          gradient: const LinearGradient(
-            colors: [Color(0xFFFF5722), Color(0xFFFF8A65)],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
+          gradient: const LinearGradient(colors: [Color(0xFFFF5722), Color(0xFFFF8A65)], begin: Alignment.topLeft, end: Alignment.bottomRight),
           borderRadius: BorderRadius.circular(20),
-          boxShadow: [
-            BoxShadow(
-              color: const Color(0xFFFF5722).withValues(alpha: 0.3),
-              blurRadius: 15,
-              offset: const Offset(0, 5),
-            )
-          ],
+          color: const Color(0xFFFF5722).withValues(alpha: 0.3),
         ),
         child: const Column(
           children: [
             Icon(Icons.map_rounded, color: Colors.white, size: 50),
             SizedBox(height: 10),
-            Text(
-              "VER BOLSA DE PEDIDOS",
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 20,
-                fontWeight: FontWeight.w900,
-                letterSpacing: 1,
-              ),
-            ),
+            Text("VER BOLSA DE PEDIDOS", style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w900, letterSpacing: 1)),
             SizedBox(height: 5),
-            Text(
-              "Toca aquí para ver pedidos cercanos",
-              style: TextStyle(color: Colors.white70, fontSize: 14),
-            ),
+            Text("Toca aquí para ver pedidos cercanos", style: TextStyle(color: Colors.white70, fontSize: 14)),
           ],
         ),
       ),
@@ -381,15 +326,11 @@ class _HomeRepartidorState extends State<HomeRepartidor> {
   Widget _buildOfflineState() {
     return Center(
       child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
         children: [
           const SizedBox(height: 80),
           Icon(Icons.location_off_rounded, size: 100, color: Colors.grey[300]),
           const SizedBox(height: 20),
-          const Text(
-            "No estás recibiendo pedidos",
-            style: TextStyle(color: Colors.grey, fontSize: 16),
-          ),
+          const Text("No estás recibiendo pedidos", style: TextStyle(color: Colors.grey, fontSize: 16)),
         ],
       ),
     );

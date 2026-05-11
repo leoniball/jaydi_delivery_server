@@ -15,12 +15,12 @@ class _RegistroScreenState extends State<RegistroScreen> {
   final _nombreController = TextEditingController();
   final _apellidoController = TextEditingController();
   final _telefonoController = TextEditingController();
-  final _correoController = TextEditingController();
-  final _claveController = TextEditingController();
+  final _emailController = TextEditingController(); // ESTRICTAMENTE EMAIL
+  final _passwordController = TextEditingController(); // ESTRICTAMENTE PASSWORD
 
   bool _cargando = false;
+  bool _obscureText = true; // Para mostrar/ocultar el password
 
-  // URL DE TU SERVIDOR EN RENDER
   static const String baseUrl = 'https://jaydi-delivery-serverv.onrender.com';
 
   Future<void> _registrar() async {
@@ -36,8 +36,8 @@ class _RegistroScreenState extends State<RegistroScreen> {
             "nombre": _nombreController.text.trim(),
             "apellido": _apellidoController.text.trim(),
             "telefono": _telefonoController.text.trim(),
-            "email": _correoController.text.trim(),
-            "password": _claveController.text,      
+            "email": _emailController.text.trim(), // Se envía como email
+            "password": _passwordController.text,  // Se envía como password
             "rol": "repartidor"                     
           }),
         ).timeout(const Duration(seconds: 15));
@@ -45,23 +45,21 @@ class _RegistroScreenState extends State<RegistroScreen> {
         final data = jsonDecode(response.body);
 
         if (response.statusCode == 201) {
-          // REGISTRO EXITOSO
           SharedPreferences prefs = await SharedPreferences.getInstance();
           
-          // 🔥 MAGIA AQUÍ: Leemos los datos sin importar si responde Express o Delivery
           if (data.containsKey('userData')) {
             final userData = data['userData'];
             await prefs.setString('userId', userData['id'].toString());
             await prefs.setString('nombre', userData['nombre']);
-            await prefs.setString('email', userData['correo'] ?? userData['email']);
+            // GUARDADO ESTRICTAMENTE COMO EMAIL
+            await prefs.setString('email', userData['email'] ?? userData['correo'] ?? "");
           } else if (data.containsKey('usuario')) {
             final userData = data['usuario'];
             await prefs.setString('userId', userData['id'].toString());
             await prefs.setString('nombre', userData['nombre']);
-            await prefs.setString('email', userData['email']);
+            // GUARDADO ESTRICTAMENTE COMO EMAIL
+            await prefs.setString('email', userData['email'] ?? userData['correo'] ?? "");
           }
-          // Nota: Si el servidor solo manda "mensaje" y no manda los datos del usuario, 
-          // igual lo dejamos pasar porque el registro en Neon sí fue exitoso.
           
           await prefs.setBool('isLoggedIn', true);
 
@@ -73,11 +71,9 @@ class _RegistroScreenState extends State<RegistroScreen> {
                 backgroundColor: Colors.green,
               ),
             );
-            // Navegamos al Home
             Navigator.pushReplacementNamed(context, '/home');
           }
         } else {
-          // 🔥 MAGIA 2: Buscamos el error exacto ya sea en 'mensaje' o en 'error'
           if (mounted) {
             final errorReal = data['mensaje'] ?? data['error'] ?? "Error desconocido al registrar";
             _mostrarError(errorReal);
@@ -151,22 +147,26 @@ class _RegistroScreenState extends State<RegistroScreen> {
               const SizedBox(height: 15),
 
               TextFormField(
-                controller: _correoController,
+                controller: _emailController,
                 decoration: const InputDecoration(
-                  labelText: "Correo Electrónico", 
+                  labelText: "Email", 
                   border: OutlineInputBorder()
                 ),
                 keyboardType: TextInputType.emailAddress,
-                validator: (value) => !value!.contains("@") ? "Correo inválido" : null,
+                validator: (value) => !value!.contains("@") ? "Email inválido" : null,
               ),
               const SizedBox(height: 15),
 
               TextFormField(
-                controller: _claveController,
-                obscureText: true,
-                decoration: const InputDecoration(
-                  labelText: "Contraseña", 
-                  border: OutlineInputBorder()
+                controller: _passwordController,
+                obscureText: _obscureText,
+                decoration: InputDecoration(
+                  labelText: "Password", 
+                  border: const OutlineInputBorder(),
+                  suffixIcon: IconButton(
+                    icon: Icon(_obscureText ? Icons.visibility : Icons.visibility_off),
+                    onPressed: () => setState(() => _obscureText = !_obscureText),
+                  ),
                 ),
                 validator: (value) {
                   if (value == null || value.isEmpty) {

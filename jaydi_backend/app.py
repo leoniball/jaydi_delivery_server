@@ -4,8 +4,8 @@ import os
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from datetime import datetime
+import traceback 
 
-# --- NUEVO: IMPORTAR Y CARGAR VARIABLES DE ENTORNO OCULTAS ---
 from dotenv import load_dotenv
 load_dotenv()
 
@@ -13,11 +13,9 @@ app = Flask(__name__)
 CORS(app)
 
 # --- CONFIGURACIÓN DE BASE DE DATOS (NEON) ---
-# Ahora busca en tu archivo .env, si no lo encuentra, queda vacío (seguro para GitHub)
 DB_URL = os.environ.get('DATABASE_URL', '')
 
 def get_db_connection():
-    # 🔥 ESTO ES LO NUEVO: "Latidos" (keepalives) para que Neon no cierre la conexión SSL
     return psycopg2.connect(
         DB_URL,
         keepalives=1,
@@ -26,51 +24,11 @@ def get_db_connection():
         keepalives_count=5
     )
 
-# RUTA CRÍTICA: Definimos la ruta absoluta para que Flask no se pierda buscando archivos
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 UPLOAD_FOLDER = os.path.join(BASE_DIR, 'uploads', 'documentos')
 
 if not os.path.exists(UPLOAD_FOLDER):
     os.makedirs(UPLOAD_FOLDER)
-
-# --- PARCHE DE COMPATIBILIDAD (EJECUTAR EN NAVEGADOR PARA ARREGLAR COLUMNAS) ---
-@app.route('/actualizar_bd_total')
-def actualizar_bd_total():
-    try:
-        conn = get_db_connection()
-        cur = conn.cursor()
-        
-        # 1. Renombramos tabla si hace falta
-        try: cur.execute("ALTER TABLE IF EXISTS usuario RENAME TO usuarios;")
-        except: pass
-        
-        # 2. Aseguramos que la tabla exista con todos los campos necesarios
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS usuarios (
-                id SERIAL PRIMARY KEY, nombre TEXT NOT NULL, apellido TEXT, telefono TEXT,
-                correo TEXT UNIQUE NOT NULL, email TEXT, clave TEXT NOT NULL, password TEXT,
-                rol TEXT DEFAULT 'cliente', tipo_usuario TEXT DEFAULT 'cliente',
-                es_verificado BOOLEAN DEFAULT FALSE, verificado BOOLEAN DEFAULT FALSE,
-                saldo_acumulado FLOAT DEFAULT 0.0, saldo FLOAT DEFAULT 0.0,
-                foto_perfil TEXT, vehiculo VARCHAR(50), placa VARCHAR(20),
-                viajes_completados INTEGER DEFAULT 0, latitud FLOAT, longitud FLOAT,
-                ultima_conexion TIMESTAMP
-            );
-        """)
-        
-        # 3. Forzamos columnas GPS
-        columnas = ["latitud FLOAT", "longitud FLOAT", "foto_perfil TEXT", "vehiculo VARCHAR(50)", "placa VARCHAR(20)"]
-        for col in columnas:
-            try: cur.execute(f"ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS {col};")
-            except: pass
-
-        conn.commit()
-        cur.close()
-        conn.close()
-        return jsonify({"status": "success", "message": "¡Base de datos sincronizada y columnas creadas!"}), 200
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
 
 # --- SERVIR ARCHIVOS AL PANEL ADMIN ---
 @app.route('/uploads/documentos/user_<int:user_id>/<filename>')
@@ -92,60 +50,68 @@ def admin_panel():
 
 @app.route('/admin/api/repartidores', methods=['GET'])
 def listar_repartidores():
+    conn = None
     try:
         conn = get_db_connection()
         cur = conn.cursor(cursor_factory=RealDictCursor)
+        # ACÁ AHORA BUSCAMOS 'email'
         cur.execute("""
-            SELECT id, nombre, correo, es_verificado, 
+            SELECT id, nombre, email, es_verificado, 
                    COALESCE(saldo_acumulado, 0) as saldo, 
                    ultima_conexion 
             FROM usuarios 
-            WHERE tipo_usuario = 'repartidor' OR rol = 'repartidor'
+            WHERE rol = 'repartidor'
             ORDER BY es_verificado ASC, ultima_conexion DESC NULLS LAST
         """)
         repartidores = cur.fetchall()
         cur.close()
-        conn.close()
         return jsonify(repartidores), 200
     except Exception as e:
+        traceback.print_exc()
         return jsonify({"error": str(e)}), 500
+    finally:
+        if conn: conn.close()
 
 @app.route('/admin/aprobar/<int:user_id>', methods=['POST', 'GET'])
 def aprobar_repartidor(user_id):
+    conn = None
     try:
         conn = get_db_connection()
         cur = conn.cursor()
         cur.execute("UPDATE usuarios SET es_verificado = TRUE WHERE id = %s", (user_id,))
         conn.commit()
         cur.close()
-        conn.close()
         return jsonify({"status": "success", "message": "Repartidor aprobado"}), 200
     except Exception as e:
+        traceback.print_exc()
         return jsonify({"error": str(e)}), 500
+    finally:
+        if conn: conn.close()
 
 # --- ENDPOINTS PARA LA APP (FLUTTER) ---
 
 @app.route('/login', methods=['POST'])
 def login():
     data = request.json
-    correo = data.get('correo') or data.get('email')
-    clave = data.get('clave') or data.get('password')
+    email = data.get('email')
+    password = data.get('password')
+    conn = None
     try:
         conn = get_db_connection()
         cur = conn.cursor(cursor_factory=RealDictCursor)
         
         ahora = datetime.now()
+        # ACÁ AHORA ES ESTRICTO CON EMAIL Y PASSWORD
         cur.execute("""
             UPDATE usuarios 
             SET ultima_conexion = %s 
-            WHERE (correo = %s OR email = %s) AND (clave = %s OR password = %s) 
-            RETURNING id, nombre, correo, es_verificado, rol, tipo_usuario
-        """, (ahora, correo, correo, clave, clave))
+            WHERE email = %s AND password = %s 
+            RETURNING id, nombre, email, es_verificado, rol
+        """, (ahora, email, password))
         
         user = cur.fetchone()
         conn.commit()
         cur.close()
-        conn.close()
         
         if user:
             return jsonify({
@@ -153,44 +119,88 @@ def login():
                 "userData": {
                     "id": str(user['id']),
                     "nombre": user['nombre'],
-                    "correo": user['correo'],
+                    "email": user['email'], # <- Manda el email de vuelta
                     "verificado": user['es_verificado']
                 }
             }), 200
         return jsonify({"error": "Credenciales inválidas"}), 401
     except Exception as e:
+        traceback.print_exc()
+        if conn: conn.rollback()
         return jsonify({"error": str(e)}), 500
+    finally:
+        if conn: conn.close()
 
 @app.route('/registro', methods=['POST'])
 @app.route('/registrar', methods=['POST'])
 def registro():
     data = request.json
     nombre = data.get('nombre')
-    correo = data.get('correo') or data.get('email')
-    clave = data.get('clave') or data.get('password') 
+    email = data.get('email')
+    password = data.get('password') 
     rol = data.get('rol', 'repartidor')
+    conn = None
     try:
         conn = get_db_connection()
         cur = conn.cursor(cursor_factory=RealDictCursor)
-        cur.execute("SELECT id FROM usuarios WHERE correo = %s OR email = %s", (correo, correo))
+        cur.execute("SELECT id FROM usuarios WHERE email = %s", (email,))
         if cur.fetchone():
-            return jsonify({"error": "El correo ya existe"}), 400
+            cur.close()
+            return jsonify({"error": "El email ya existe"}), 400
         
         cur.execute("""
-            INSERT INTO usuarios (nombre, correo, email, clave, password, tipo_usuario, rol, es_verificado, saldo_acumulado, ultima_conexion)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, FALSE, 0.0, CURRENT_TIMESTAMP) 
-            RETURNING id, nombre, correo
-        """, (nombre, correo, correo, clave, clave, rol, rol))
+            INSERT INTO usuarios (nombre, email, password, rol, es_verificado, saldo_acumulado, ultima_conexion)
+            VALUES (%s, %s, %s, %s, FALSE, 0.0, CURRENT_TIMESTAMP) 
+            RETURNING id, nombre, email
+        """, (nombre, email, password, rol))
         nuevo = cur.fetchone()
         conn.commit()
         cur.close()
-        conn.close()
         return jsonify({
             "status": "success",
-            "userData": {"id": str(nuevo['id']), "nombre": nuevo['nombre'], "correo": nuevo['correo']}
+            "userData": {"id": str(nuevo['id']), "nombre": nuevo['nombre'], "email": nuevo['email']}
         }), 201
     except Exception as e:
+        traceback.print_exc()
+        if conn: conn.rollback()
         return jsonify({"error": str(e)}), 500
+    finally:
+        if conn: conn.close()
+
+# 🔥 EL ENDPOINT QUE FALTABA PARA QUE PERFIL_SCREEN FUNCIONE 🔥
+@app.route('/perfil/<int:user_id>', methods=['GET', 'PUT'])
+def gestionar_perfil(user_id):
+    conn = None
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+
+        if request.method == 'GET':
+            cur.execute("""
+                SELECT telefono, vehiculo, placa, viajes_completados, 
+                       COALESCE(saldo_acumulado, 0) as saldo, foto_perfil 
+                FROM usuarios WHERE id = %s
+            """, (user_id,))
+            user = cur.fetchone()
+            cur.close()
+            if not user:
+                return jsonify({"error": "Usuario no encontrado"}), 404
+            return jsonify(user), 200
+
+        if request.method == 'PUT':
+            data = request.json
+            if 'foto_perfil' in data:
+                cur.execute("UPDATE usuarios SET foto_perfil = %s WHERE id = %s", (data['foto_perfil'], user_id))
+                conn.commit()
+            cur.close()
+            return jsonify({"status": "success", "message": "Perfil actualizado"}), 200
+
+    except Exception as e:
+        traceback.print_exc()
+        if conn: conn.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        if conn: conn.close()
 
 @app.route('/subir_documento', methods=['POST'])
 def subir_documento():
@@ -200,6 +210,7 @@ def subir_documento():
     file = request.files['file']
     user_id = request.form.get('user_id')
     tipo = request.form.get('tipo', 'documento')
+    conn = None
 
     try:
         user_folder = os.path.join(UPLOAD_FOLDER, f"user_{user_id}")
@@ -224,52 +235,57 @@ def subir_documento():
             conn.rollback() 
         
         cur.close()
-        conn.close()
-
         return jsonify({"status": "success", "message": f"{tipo} guardado correctamente"}), 200
     except Exception as e:
+        traceback.print_exc()
         return jsonify({"error": str(e)}), 500
+    finally:
+        if conn: conn.close()
 
 @app.route('/verificar_estatus/<int:user_id>', methods=['GET'])
 def verificar_estatus(user_id):
+    conn = None
     try:
         conn = get_db_connection()
         cur = conn.cursor(cursor_factory=RealDictCursor)
         cur.execute("SELECT es_verificado FROM usuarios WHERE id = %s", (user_id,))
         resultado = cur.fetchone()
         cur.close()
-        conn.close()
         return jsonify({
             "status": "success", 
             "es_verificado": resultado['es_verificado'] if resultado else False
         }), 200
     except Exception as e:
+        traceback.print_exc()
         return jsonify({"error": str(e)}), 500
+    finally:
+        if conn: conn.close()
 
 # --- NUEVOS ENDPOINTS DE ASIGNACIÓN DE PEDIDOS ---
 
 @app.route('/api/delivery/pedidos_disponibles', methods=['GET'])
 def obtener_pedidos_delivery():
+    conn = None
     try:
         conn = get_db_connection()
         cur = conn.cursor(cursor_factory=RealDictCursor)
-        
         cur.execute("""
             SELECT id, id_usuario AS cliente, direccion_entrega AS direccion, total 
             FROM pedidos 
             WHERE estado = 'listo_para_entrega' OR estado = 'pendiente'
         """)
         pedidos_listos = cur.fetchall()
-        
         cur.close()
-        conn.close()
-        
         return jsonify(pedidos_listos), 200
     except Exception as e:
+        traceback.print_exc()
         return jsonify({"error": str(e)}), 500
+    finally:
+        if conn: conn.close()
 
 @app.route('/pedidos_pendientes', methods=['GET'])
 def pedidos_pendientes():
+    conn = None
     try:
         conn = get_db_connection()
         cur = conn.cursor(cursor_factory=RealDictCursor)
@@ -280,32 +296,47 @@ def pedidos_pendientes():
         """)
         pedidos = cur.fetchall()
         cur.close()
-        conn.close()
         return jsonify(pedidos), 200
     except Exception as e:
+        traceback.print_exc()
         return jsonify({"error": str(e)}), 500
+    finally:
+        if conn: conn.close()
 
 @app.route('/aceptar_pedido', methods=['POST'])
 def aceptar_pedido():
     data = request.json
     pedido_id = data.get('pedido_id')
     repartidor_id = data.get('repartidor_id')
+    conn = None
 
     try:
         conn = get_db_connection()
         cur = conn.cursor(cursor_factory=RealDictCursor)
         
+        cur.execute("SELECT es_verificado FROM usuarios WHERE id = %s", (repartidor_id,))
+        repartidor = cur.fetchone()
+        
+        if not repartidor:
+            cur.close()
+            return jsonify({"error": "Repartidor no encontrado"}), 404
+            
+        if not repartidor['es_verificado']:
+            cur.close()
+            return jsonify({
+                "error": "Cuenta no verificada", 
+                "mensaje": "Tu cuenta aún no ha sido aprobada por el administrador. No puedes aceptar pedidos."
+            }), 403
+
         cur.execute("SELECT estado FROM pedidos WHERE id = %s", (pedido_id,))
         pedido = cur.fetchone()
         
         if not pedido:
             cur.close()
-            conn.close()
             return jsonify({"error": "Pedido no encontrado"}), 404
             
         if pedido['estado'] != 'pendiente' and pedido['estado'] != 'listo_para_entrega':
             cur.close()
-            conn.close()
             return jsonify({"error": "Este pedido ya fue tomado por otro repartidor"}), 400
 
         cur.execute("""
@@ -316,11 +347,14 @@ def aceptar_pedido():
         
         conn.commit()
         cur.close()
-        conn.close()
-        
         return jsonify({"status": "success", "message": "¡Pedido aceptado con éxito!"}), 200
+        
     except Exception as e:
+        traceback.print_exc()
+        if conn: conn.rollback()
         return jsonify({"error": str(e)}), 500
+    finally:
+        if conn: conn.close()
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))

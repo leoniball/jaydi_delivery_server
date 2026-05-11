@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart'; 
-import 'editar_perfil_screen.dart'; // Importación vital para que el botón funcione
+import 'editar_perfil_screen.dart'; 
 
 class PerfilScreen extends StatefulWidget {
   const PerfilScreen({super.key});
@@ -14,9 +14,9 @@ class PerfilScreen extends StatefulWidget {
 }
 
 class _PerfilScreenState extends State<PerfilScreen> {
-  // Variables Originales
+  // Variables Originales (Ajustado a email)
   String nombreUsuario = "Cargando...";
-  String correoUsuario = "...";
+  String emailUsuario = "..."; // <- Hablamos el mismo idioma
   bool esVerificado = false;
   bool cargando = true;
 
@@ -40,13 +40,13 @@ class _PerfilScreenState extends State<PerfilScreen> {
     
     final String? idPersistido = prefs.getString('userId');
     final String? nombrePersistido = prefs.getString('nombre');
-    final String? correoPersistido = prefs.getString('correo');
+    final String? emailPersistido = prefs.getString('email'); // <- Hablamos el mismo idioma
 
     if (mounted) {
       setState(() {
         userId = idPersistido; 
         nombreUsuario = nombrePersistido ?? "Usuario Jaydi";
-        correoUsuario = correoPersistido ?? "Sin correo";
+        emailUsuario = emailPersistido ?? "Sin email";
       });
     }
 
@@ -60,7 +60,7 @@ class _PerfilScreenState extends State<PerfilScreen> {
           final data = jsonDecode(responseVerificar.body);
           if (mounted) {
             setState(() {
-              esVerificado = data['verificado'] ?? false; 
+              esVerificado = data['es_verificado'] ?? false; 
             });
           }
         }
@@ -204,7 +204,7 @@ class _PerfilScreenState extends State<PerfilScreen> {
             ),
             const SizedBox(height: 20),
             Text(nombreUsuario.toUpperCase(), style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900)),
-            Text(correoUsuario, style: const TextStyle(fontSize: 15, color: Colors.grey)),
+            Text(emailUsuario, style: const TextStyle(fontSize: 15, color: Colors.grey)), // <- Hablamos el mismo idioma
             const SizedBox(height: 30),
 
             Padding(
@@ -262,12 +262,10 @@ class _PerfilScreenState extends State<PerfilScreen> {
             ),
             const SizedBox(height: 40),
             
-            // --- BOTÓN EDITAR PERFIL CORREGIDO ---
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 30),
               child: ElevatedButton(
                 onPressed: userId != null ? () async {
-                  // Abre la pantalla de edición y espera a ver si guardó (resultado == true)
                   final resultado = await Navigator.push(
                     context,
                     MaterialPageRoute(
@@ -280,7 +278,6 @@ class _PerfilScreenState extends State<PerfilScreen> {
                     ),
                   );
 
-                  // Si el usuario guardó cambios, recargamos los datos del servidor
                   if (resultado == true) {
                     setState(() => cargando = true);
                     _cargarDatosYVerificar();

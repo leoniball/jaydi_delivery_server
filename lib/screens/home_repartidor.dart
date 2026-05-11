@@ -16,7 +16,7 @@ class HomeRepartidor extends StatefulWidget {
 class _HomeRepartidorState extends State<HomeRepartidor> {
   bool isOnline = false;
   bool esVerificado = false; 
-  String nombreUsuario = "Leandro"; 
+  String nombreUsuario = ""; // Lo dejamos vacío por defecto
   String? userId; // ID dinámico recuperado de la sesión
   bool cargandoEstatus = true;
 
@@ -35,14 +35,21 @@ class _HomeRepartidorState extends State<HomeRepartidor> {
   Future<void> _cargarDatosUsuario() async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     setState(() {
-      nombreUsuario = prefs.getString('nombre') ?? "Leandro";
-      userId = prefs.getString('userId') ?? "1"; 
+      // Busca el nombre individual. Si no hay nada, lo deja vacío.
+      nombreUsuario = prefs.getString('nombre') ?? "";
+      userId = prefs.getString('userId'); 
     });
   }
 
   // --- FUNCIÓN: CONSULTA A NEON VÍA FLASK ---
   Future<void> _verificarEstatusServidor() async {
     if (userId == null) await _cargarDatosUsuario();
+    
+    // Si después de intentar cargar, sigue siendo nulo, no hacemos la petición para no dar error 500
+    if (userId == null) {
+      setState(() => cargandoEstatus = false);
+      return;
+    }
     
     final String url = "https://jaydi-delivery-serverv.onrender.com/verificar_estatus/$userId";
 
@@ -86,7 +93,6 @@ class _HomeRepartidorState extends State<HomeRepartidor> {
   }
 
   // --- NUEVA LÓGICA: PROCESAR ACEPTACIÓN Y SALTAR A RUTA ---
-  // Esta función la puedes llamar desde aquí o pasarla a la Bolsa de Pedidos
   Future<void> aceptarPedidoRapido(int pedidoId) async {
     try {
       final response = await http.post(
@@ -98,8 +104,6 @@ class _HomeRepartidorState extends State<HomeRepartidor> {
       if (response.statusCode == 200) {
         if (mounted) {
           // EL SALTO DE FE: 
-          // Mandamos al usuario al MainMenu y forzamos que se reinicie el flujo.
-          // La pantalla de Ruta (que está en el index 1 del MainMenu) detectará el pedido activo.
           Navigator.pushAndRemoveUntil(
             context,
             MaterialPageRoute(builder: (context) => const MainMenu()),
@@ -221,8 +225,9 @@ class _HomeRepartidorState extends State<HomeRepartidor> {
             children: [
               const SizedBox(height: 25),
               
+              // LÓGICA DINÁMICA: Si hay nombre, lo saluda por su nombre. Si no, solo "¡Hola!"
               Text(
-                "¡Hola, $nombreUsuario!",
+                nombreUsuario.isEmpty ? "¡Hola!" : "¡Hola, $nombreUsuario!",
                 style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 5),

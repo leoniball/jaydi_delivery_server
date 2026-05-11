@@ -12,12 +12,11 @@ class LoginScreen extends StatefulWidget {
 
 class _LoginScreenState extends State<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _correoController = TextEditingController();
-  final _claveController = TextEditingController();
+  final _emailController = TextEditingController(); // <- Email
+  final _passwordController = TextEditingController(); // <- Password
   bool _obscureText = true;
   bool _isLoading = false; 
 
-  // CENTRALIZAMOS TU URL DE RENDER AQUÍ
   static const String baseUrl = 'https://jaydi-delivery-serverv.onrender.com';
 
   Future<void> _iniciarSesion() async {
@@ -29,39 +28,34 @@ class _LoginScreenState extends State<LoginScreen> {
           Uri.parse('$baseUrl/login'),
           headers: {'Content-Type': 'application/json'},
           body: jsonEncode({
-            // CORRECCIÓN 1: El servidor en Python espera 'email' y 'password'
-            'email': _correoController.text.trim(),
-            'password': _claveController.text,
+            'email': _emailController.text.trim(),
+            'password': _passwordController.text,
           }),
         ).timeout(const Duration(seconds: 15)); 
 
         if (response.statusCode == 200) {
           final data = jsonDecode(response.body);
-          
-          // CORRECCIÓN 2: El nuevo app.py devuelve los datos en la llave 'usuario'
-          final userData = data['usuario'];
+          final userData = data['userData'];
 
           SharedPreferences prefs = await SharedPreferences.getInstance();
           await prefs.setBool('isLoggedIn', true);
           
-          // Guardamos los datos asegurando que el formato no rompa la app
           await prefs.setInt('repartidor_id', int.parse(userData['id'].toString()));
           await prefs.setString('nombre_repartidor', userData['nombre']);
           await prefs.setString('userId', userData['id'].toString()); 
           await prefs.setString('nombre', userData['nombre']); 
-          // CORRECCIÓN 3: El servidor devuelve el correo en la llave 'email'
-          await prefs.setString('correo', userData['email']); 
+          
+          // ESTRUCTURADO POR EMAIL: Coincide con lo que manda el nuevo app.py
+          await prefs.setString('email', userData['email']); 
 
           if (mounted) {
             Navigator.pushReplacementNamed(context, '/home');
           }
         } else {
-          // Error de credenciales o de falta de aprobación (401 o 403)
           final errorData = jsonDecode(response.body);
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
-              // CORRECCIÓN 4: El servidor manda la razón del error en 'mensaje'
-              SnackBar(content: Text(errorData['mensaje'] ?? "Error al iniciar sesión")),
+              SnackBar(content: Text(errorData['error'] ?? "Error al iniciar sesión")),
             );
           }
         }
@@ -95,22 +89,20 @@ class _LoginScreenState extends State<LoginScreen> {
               const Text("Inicia sesión para continuar", style: TextStyle(color: Colors.grey)),
               const SizedBox(height: 40),
 
-              // Campo de Correo
               TextFormField(
-                controller: _correoController,
+                controller: _emailController,
                 keyboardType: TextInputType.emailAddress,
                 decoration: InputDecoration(
-                  labelText: "Correo Electrónico",
+                  labelText: "Email", // <- Email
                   prefixIcon: const Icon(Icons.email_outlined),
                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(15)),
                 ),
-                validator: (value) => !value!.contains("@") ? "Ingresa un correo válido" : null,
+                validator: (value) => !value!.contains("@") ? "Ingresa un email válido" : null,
               ),
               const SizedBox(height: 20),
 
-              // Campo de Clave
               TextFormField(
-                controller: _claveController,
+                controller: _passwordController,
                 obscureText: _obscureText,
                 decoration: InputDecoration(
                   labelText: "Contraseña",
@@ -121,12 +113,10 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(15)),
                 ),
-                // AQUÍ EL CAMBIO: Libre elección al iniciar sesión
                 validator: (value) => value!.isEmpty ? "Campo obligatorio" : null,
               ),
               const SizedBox(height: 30),
 
-              // Botón de Ingreso
               ElevatedButton(
                 onPressed: _isLoading ? null : _iniciarSesion,
                 style: ElevatedButton.styleFrom(
